@@ -37,6 +37,14 @@ export interface Property {
   createdAt?: string;
 }
 
+export interface HistoryEntry {
+  id?: string;
+  type: string; // 'creation' | 'status_change' | 'pipeline_change' | 'whatsapp' | 'task_created' | 'task_completed' | 'visit_scheduled' | 'proposal_sent' | 'observation' | 'loss'
+  date: string; // YYYY-MM-DD HH:mm:ss or similar ISO string
+  description: string;
+  userName?: string;
+}
+
 export interface Client {
   id?: string;
   _id?: string;
@@ -63,9 +71,15 @@ export interface Client {
   observations: string;
   birthday?: string; // YYYY-MM-DD
   address?: string; // Client address
-  pipelineStatus?: string; // Funnel stage: Em Atendimento, Em Visita, Em Proposta, Fase de Contrato, Contrato Assinado, Fase de Documentação, Finalização do Processo
+  pipelineStatus?: string; // Funnel stage
   linkedPropertyId?: string; // Reference key or MongoDB/Local ID of Property
   createdAt?: string;
+  updatedAt?: string; // Track when client stage/status was last modified
+  lossReason?: string; // Motivo de perda
+  commissionForecast?: number; // Previsão de comissão (BRL)
+  commissionPercent?: number; // Porcentagem de comissão (%)
+  potentialValue?: number; // Valor potencial do negócio (BRL)
+  history?: HistoryEntry[];
 }
 
 export interface Proposal {
@@ -107,11 +121,14 @@ export interface Task {
   date: string; // YYYY-MM-DD
   time: string; // HH:MM
   title: string;
+  clientId?: string; // Linked client (required for new tasks, optional for legacy)
   clientName: string;
-  description: string;
-  type: string; // 'VISITA' | 'FOLLOW-UP' | 'CONTRATO' | 'OUTRO'
-  completed: boolean;
+  propertyId?: string; // Linked property, optional
   propertyTitle?: string;
+  type: string; // 'Ligar' | 'Enviar WhatsApp' | 'Enviar imóvel' | 'Confirmar visita' | 'Enviar proposta' | 'Cobrar retorno' | 'Documentação' | 'Outro'
+  priority?: "baixa" | "média" | "alta"; // Priority
+  completed: boolean;
+  description: string;
   createdAt?: string;
 }
 

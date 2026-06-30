@@ -32,9 +32,20 @@ async function startServer() {
 
   // Middleware to require authentication on private API endpoints
   const requireAuth = (req: any, res: any, next: any) => {
-    const cookieHeader = req.headers.cookie || "";
-    const match = cookieHeader.match(/session_id=([^;]+)/);
-    const token = match ? match[1] : null;
+    let token = null;
+
+    // 1. Check Authorization Header
+    const authHeader = req.headers.authorization || "";
+    if (authHeader.startsWith("Bearer ")) {
+      token = authHeader.substring(7);
+    }
+
+    // 2. Check session_id Cookie
+    if (!token) {
+      const cookieHeader = req.headers.cookie || "";
+      const match = cookieHeader.match(/(?:^|;\s*)session_id=([^;]+)/);
+      token = match ? match[1] : null;
+    }
 
     if (!token) {
       return res.status(401).json({ error: "Sessão expirada ou não autorizado. Por favor, faça login." });
@@ -195,7 +206,72 @@ async function startServer() {
   // Update client
   app.put("/api/clients/:id", requireAuth, async (req: any, res) => {
     try {
-      const updated = await db.updateClient(req.params.id, req.body, req.userId);
+      const clientId = req.params.id;
+      const oldClient = await db.getClientById(clientId, req.userId);
+      
+      if (oldClient) {
+        // Fetch current user
+        const users = await db.getUsers();
+        const user = users.find(u => u.id === req.userId || u._id?.toString() === req.userId);
+        const userName = user?.name || user?.username;
+
+        // Start with body history or old client history or default creation
+        const existingHistory = req.body.history || oldClient.history || [
+          {
+            id: Math.random().toString(36).substring(2, 11),
+            type: "creation",
+            date: oldClient.createdAt || new Date().toISOString(),
+            description: "Lead criado no sistema",
+          }
+        ];
+
+        const additionalEntries = [];
+
+        // Check status change
+        if (req.body.status !== undefined && req.body.status !== oldClient.status) {
+          additionalEntries.push({
+            id: Math.random().toString(36).substring(2, 11),
+            type: "status_change",
+            date: new Date().toISOString(),
+            description: `Status alterado de "${oldClient.status || "Sem Status"}" para "${req.body.status}"`,
+            userName
+          });
+        }
+
+        // Check pipeline status change
+        if (req.body.pipelineStatus !== undefined && req.body.pipelineStatus !== oldClient.pipelineStatus) {
+          additionalEntries.push({
+            id: Math.random().toString(36).substring(2, 11),
+            type: "pipeline_change",
+            date: new Date().toISOString(),
+            description: `Etapa do pipeline alterada de "${oldClient.pipelineStatus || "Sem etapa"}" para "${req.body.pipelineStatus}"`,
+            userName
+          });
+        }
+
+        // Check for Loss reason
+        if (
+          (req.body.status === "Perdido" || req.body.pipelineStatus === "Perdido") &&
+          req.body.lossReason &&
+          req.body.lossReason !== oldClient.lossReason
+        ) {
+          additionalEntries.push({
+            id: Math.random().toString(36).substring(2, 11),
+            type: "loss",
+            date: new Date().toISOString(),
+            description: `Motivo de perda registrado: "${req.body.lossReason}"`,
+            userName
+          });
+        }
+
+        if (additionalEntries.length > 0) {
+          req.body.history = [...existingHistory, ...additionalEntries];
+        } else if (!req.body.history) {
+          req.body.history = existingHistory;
+        }
+      }
+
+      const updated = await db.updateClient(clientId, req.body, req.userId);
       if (!updated) {
         return res.status(404).json({ error: "Cliente não encontrado para atualização ou permissão negada" });
       }
@@ -243,6 +319,42 @@ async function startServer() {
   app.post("/api/tasks", requireAuth, async (req: any, res) => {
     try {
       const newTask = await db.addTask(req.body, req.userId);
+      
+      // Auto-record in client history
+      if (req.body.clientId || req.body.clientName) {
+        const clients = await db.getClients(req.userId);
+        const client = clients.find(c => 
+          (req.body.clientId && (c.id === req.body.clientId || c._id?.toString() === req.body.clientId)) ||
+          (req.body.clientName && c.name.toLowerCase() === req.body.clientName.toLowerCase())
+        );
+        if (client && client.id) {
+          const users = await db.getUsers();
+          const user = users.find(u => u.id === req.userId || u._id?.toString() === req.userId);
+          const userName = user?.name || user?.username;
+
+          const historyEntry = {
+            id: Math.random().toString(36).substring(2, 11),
+            type: "task_created",
+            date: new Date().toISOString(),
+            description: `Tarefa criada: "${req.body.title}" marcada para ${req.body.date.split("-").reverse().join("/")} às ${req.body.time}`,
+            userName
+          };
+
+          const existingHistory = client.history || [
+            {
+              id: Math.random().toString(36).substring(2, 11),
+              type: "creation",
+              date: client.createdAt || new Date().toISOString(),
+              description: "Lead criado no sistema",
+            }
+          ];
+
+          await db.updateClient(client.id, {
+            history: [...existingHistory, historyEntry]
+          }, req.userId);
+        }
+      }
+
       res.status(201).json(newTask);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -252,10 +364,50 @@ async function startServer() {
   // Update task
   app.put("/api/tasks/:id", requireAuth, async (req: any, res) => {
     try {
+      // Get the original task before updating to check for status change (completion)
+      const tasksBefore = await db.getTasks(req.userId);
+      const originalTask = tasksBefore.find(t => t.id === req.params.id || t._id?.toString() === req.params.id);
+
       const updated = await db.updateTask(req.params.id, req.body, req.userId);
       if (!updated) {
         return res.status(404).json({ error: "Tarefa não encontrada para atualização ou permissão negada" });
       }
+
+      // If the task was newly marked completed
+      if (originalTask && !originalTask.completed && req.body.completed === true) {
+        const clients = await db.getClients(req.userId);
+        const client = clients.find(c => 
+          (originalTask.clientId && (c.id === originalTask.clientId || c._id?.toString() === originalTask.clientId)) ||
+          (originalTask.clientName && c.name.toLowerCase() === originalTask.clientName.toLowerCase())
+        );
+        if (client && client.id) {
+          const users = await db.getUsers();
+          const user = users.find(u => u.id === req.userId || u._id?.toString() === req.userId);
+          const userName = user?.name || user?.username;
+
+          const historyEntry = {
+            id: Math.random().toString(36).substring(2, 11),
+            type: "task_completed",
+            date: new Date().toISOString(),
+            description: `Tarefa concluída: "${originalTask.title}"`,
+            userName
+          };
+
+          const existingHistory = client.history || [
+            {
+              id: Math.random().toString(36).substring(2, 11),
+              type: "creation",
+              date: client.createdAt || new Date().toISOString(),
+              description: "Lead criado no sistema",
+            }
+          ];
+
+          await db.updateClient(client.id, {
+            history: [...existingHistory, historyEntry]
+          }, req.userId);
+        }
+      }
+
       res.json(updated);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -291,6 +443,38 @@ async function startServer() {
   app.post("/api/proposals", requireAuth, async (req: any, res) => {
     try {
       const proposal = await db.addProposal(req.body, req.userId);
+      
+      // Auto-record in client history
+      if (req.body.clientId) {
+        const client = await db.getClientById(req.body.clientId, req.userId);
+        if (client && client.id) {
+          const users = await db.getUsers();
+          const user = users.find(u => u.id === req.userId || u._id?.toString() === req.userId);
+          const userName = user?.name || user?.username;
+
+          const historyEntry = {
+            id: Math.random().toString(36).substring(2, 11),
+            type: "proposal_sent",
+            date: new Date().toISOString(),
+            description: `Proposta enviada para o imóvel "${req.body.propertyTitle || "Imóvel"}" no valor de R$ ${(req.body.proposedValue || 0).toLocaleString("pt-BR")}`,
+            userName
+          };
+
+          const existingHistory = client.history || [
+            {
+              id: Math.random().toString(36).substring(2, 11),
+              type: "creation",
+              date: client.createdAt || new Date().toISOString(),
+              description: "Lead criado no sistema",
+            }
+          ];
+
+          await db.updateClient(client.id, {
+            history: [...existingHistory, historyEntry]
+          }, req.userId);
+        }
+      }
+
       res.status(211).json(proposal);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -339,6 +523,38 @@ async function startServer() {
   app.post("/api/visits", requireAuth, async (req: any, res) => {
     try {
       const visit = await db.addVisit(req.body, req.userId);
+      
+      // Auto-record in client history
+      if (req.body.clientId) {
+        const client = await db.getClientById(req.body.clientId, req.userId);
+        if (client && client.id) {
+          const users = await db.getUsers();
+          const user = users.find(u => u.id === req.userId || u._id?.toString() === req.userId);
+          const userName = user?.name || user?.username;
+
+          const historyEntry = {
+            id: Math.random().toString(36).substring(2, 11),
+            type: "visit_scheduled",
+            date: new Date().toISOString(),
+            description: `Visita agendada para o imóvel "${req.body.propertyTitle || "Imóvel"}" no dia ${req.body.date.split("-").reverse().join("/")} às ${req.body.time}`,
+            userName
+          };
+
+          const existingHistory = client.history || [
+            {
+              id: Math.random().toString(36).substring(2, 11),
+              type: "creation",
+              date: client.createdAt || new Date().toISOString(),
+              description: "Lead criado no sistema",
+            }
+          ];
+
+          await db.updateClient(client.id, {
+            history: [...existingHistory, historyEntry]
+          }, req.userId);
+        }
+      }
+
       res.status(211).json(visit);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -468,9 +684,20 @@ Exemplo de formato esperado:
   // Get current authenticated user
   app.get("/api/auth/me", async (req, res) => {
     try {
-      const cookieHeader = req.headers.cookie || "";
-      const match = cookieHeader.match(/session_id=([^;]+)/);
-      const token = match ? match[1] : null;
+      let token = null;
+
+      // 1. Check Authorization Header
+      const authHeader = req.headers.authorization || "";
+      if (authHeader.startsWith("Bearer ")) {
+        token = authHeader.substring(7);
+      }
+
+      // 2. Check session_id Cookie
+      if (!token) {
+        const cookieHeader = req.headers.cookie || "";
+        const match = cookieHeader.match(/(?:^|;\s*)session_id=([^;]+)/);
+        token = match ? match[1] : null;
+      }
 
       if (!token) {
         return res.status(401).json({ error: "Sessão expirada ou não autenticado." });
@@ -488,7 +715,7 @@ Exemplo de formato esperado:
       }
 
       const { password: _, ...clean } = user;
-      res.json(clean);
+      res.json({ ...clean, sessionToken: token });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -516,7 +743,7 @@ Exemplo de formato esperado:
         path: "/"
       });
 
-      res.json(user);
+      res.json({ ...user, sessionToken });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -560,7 +787,7 @@ Exemplo de formato esperado:
         path: "/"
       });
 
-      res.status(201).json(newUser);
+      res.status(201).json({ ...newUser, sessionToken });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { motion } from "motion/react";
 import { X, User as UserIcon, Mail, Phone, Briefcase, Image as ImageIcon, Lock, Save, LogOut, Loader2, Check, Sparkles } from "lucide-react";
 import { User } from "../types";
+import { apiFetch } from "../api";
 
 interface UserProfileModalProps {
   user: User;
@@ -52,7 +53,7 @@ export default function UserProfileModal({ user, onClose, onUpdateSuccess, onLog
         payload.password = password;
       }
 
-      const res = await fetch(`/api/auth/update/${user.id || user._id || user.username || "vega"}`, {
+      const res = await apiFetch(`/api/auth/update/${user.id || user._id || user.username || "vega"}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

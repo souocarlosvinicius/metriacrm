@@ -13,6 +13,7 @@ import ClientModal from "./components/ClientModal";
 import LoginView from "./components/LoginView";
 import UserProfileModal from "./components/UserProfileModal";
 import OnboardingModal from "./components/OnboardingModal";
+import { apiFetch } from "./api";
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -23,7 +24,7 @@ export default function App() {
   useEffect(() => {
     const verifySession = async () => {
       try {
-        const res = await fetch("/api/auth/me");
+        const res = await apiFetch("/api/auth/me");
         if (res.ok) {
           const user = await res.json();
           setCurrentUser(user);
@@ -37,7 +38,12 @@ export default function App() {
         // Fallback to local storage if offline/error to prevent disruption, but only as safeguard
         const saved = localStorage.getItem("vega_crm_user");
         if (saved) {
-          setCurrentUser(JSON.parse(saved));
+          try {
+            setCurrentUser(JSON.parse(saved));
+          } catch (e) {
+            console.error("Erro ao analisar vega_crm_user no localStorage:", e);
+            localStorage.removeItem("vega_crm_user");
+          }
         }
       } finally {
         setCheckingAuth(false);
@@ -62,6 +68,7 @@ export default function App() {
   const [globalSearchQuery, setGlobalSearchQuery] = useState("");
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [selectedTaskDate, setSelectedTaskDate] = useState<string>(() => new Date().toISOString().split("T")[0]);
+  const [prefilledClientForTask, setPrefilledClientForTask] = useState<Client | null>(null);
 
   // Click outside listener for search bar
   useEffect(() => {
@@ -117,13 +124,27 @@ export default function App() {
   const fetchData = async () => {
     try {
       const [resProps, resClients, resTasks, resProposals, resVisits, resStatus] = await Promise.all([
-        fetch("/api/properties"),
-        fetch("/api/clients"),
-        fetch("/api/tasks"),
-        fetch("/api/proposals"),
-        fetch("/api/visits"),
-        fetch("/api/status")
+        apiFetch("/api/properties"),
+        apiFetch("/api/clients"),
+        apiFetch("/api/tasks"),
+        apiFetch("/api/proposals"),
+        apiFetch("/api/visits"),
+        apiFetch("/api/status")
       ]);
+
+      // If any of the requests return a 401 Unauthorized, the session has expired
+      if (
+        resProps.status === 401 ||
+        resClients.status === 401 ||
+        resTasks.status === 401 ||
+        resProposals.status === 401 ||
+        resVisits.status === 401
+      ) {
+        console.warn("Sessão expirada ou não autorizado detectada. Redirecionando para login.");
+        setCurrentUser(null);
+        localStorage.removeItem("vega_crm_user");
+        return;
+      }
 
       const [dataProps, dataClients, dataTasks, dataProposals, dataVisits, dataStatus] = await Promise.all([
         resProps.json(),
@@ -156,7 +177,7 @@ export default function App() {
   // Properties
   const handleAddProperty = async (newProp: Omit<Property, "id">) => {
     try {
-      const res = await fetch("/api/properties", {
+      const res = await apiFetch("/api/properties", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newProp)
@@ -172,7 +193,7 @@ export default function App() {
   const handleUpdateProperty = async (updated: Property) => {
     const id = updated.id || updated._id;
     try {
-      const res = await fetch(`/api/properties/${id}`, {
+      const res = await apiFetch(`/api/properties/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updated)
@@ -188,7 +209,7 @@ export default function App() {
 
   const handleDeleteProperty = async (id: string) => {
     try {
-      await fetch(`/api/properties/${id}`, { method: "DELETE" });
+      await apiFetch(`/api/properties/${id}`, { method: "DELETE" });
       setProperties(prev => prev.filter(p => p.id !== id && p._id !== id));
       setSelectedProperty(null);
     } catch (err) {
@@ -200,7 +221,7 @@ export default function App() {
   // Clients
   const handleAddClient = async (newClient: Omit<Client, "id">) => {
     try {
-      const res = await fetch("/api/clients", {
+      const res = await apiFetch("/api/clients", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newClient)
@@ -216,7 +237,7 @@ export default function App() {
   const handleUpdateClient = async (updated: Client) => {
     const id = updated.id || updated._id;
     try {
-      const res = await fetch(`/api/clients/${id}`, {
+      const res = await apiFetch(`/api/clients/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updated)
@@ -234,7 +255,7 @@ export default function App() {
 
   const handleDeleteClient = async (id: string) => {
     try {
-      await fetch(`/api/clients/${id}`, { method: "DELETE" });
+      await apiFetch(`/api/clients/${id}`, { method: "DELETE" });
       setClients(prev => prev.filter(c => c.id !== id && c._id !== id));
       setSelectedClient(null);
     } catch (err) {
@@ -246,7 +267,7 @@ export default function App() {
   // --- PROPOSALS CONTROLLERS ---
   const handleAddProposal = async (newProposal: Omit<Proposal, "id">) => {
     try {
-      const res = await fetch("/api/proposals", {
+      const res = await apiFetch("/api/proposals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newProposal)
@@ -262,7 +283,7 @@ export default function App() {
   const handleUpdateProposal = async (updated: Proposal) => {
     const id = updated.id || updated._id;
     try {
-      const res = await fetch(`/api/proposals/${id}`, {
+      const res = await apiFetch(`/api/proposals/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updated)
@@ -277,7 +298,7 @@ export default function App() {
 
   const handleDeleteProposal = async (id: string) => {
     try {
-      await fetch(`/api/proposals/${id}`, { method: "DELETE" });
+      await apiFetch(`/api/proposals/${id}`, { method: "DELETE" });
       setProposals(prev => prev.filter(p => p.id !== id && p._id !== id));
     } catch (err) {
       console.error(err);
@@ -288,7 +309,7 @@ export default function App() {
   // --- VISITS CONTROLLERS ---
   const handleAddVisit = async (newVisit: Omit<Visit, "id">) => {
     try {
-      const res = await fetch("/api/visits", {
+      const res = await apiFetch("/api/visits", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newVisit)
@@ -304,7 +325,7 @@ export default function App() {
   const handleUpdateVisit = async (updated: Visit) => {
     const id = updated.id || updated._id;
     try {
-      const res = await fetch(`/api/visits/${id}`, {
+      const res = await apiFetch(`/api/visits/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updated)
@@ -319,7 +340,7 @@ export default function App() {
 
   const handleDeleteVisit = async (id: string) => {
     try {
-      await fetch(`/api/visits/${id}`, { method: "DELETE" });
+      await apiFetch(`/api/visits/${id}`, { method: "DELETE" });
       setVisits(prev => prev.filter(v => v.id !== id && v._id !== id));
     } catch (err) {
       console.error(err);
@@ -330,7 +351,7 @@ export default function App() {
   // Tasks
   const handleAddTask = async (newTask: Omit<Task, "id">) => {
     try {
-      const res = await fetch("/api/tasks", {
+      const res = await apiFetch("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newTask)
@@ -345,7 +366,7 @@ export default function App() {
 
   const handleToggleTaskCompletion = async (id: string, completed: boolean) => {
     try {
-      const res = await fetch(`/api/tasks/${id}`, {
+      const res = await apiFetch(`/api/tasks/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ completed })
@@ -360,7 +381,7 @@ export default function App() {
 
   const handleDeleteTask = async (id: string) => {
     try {
-      await fetch(`/api/tasks/${id}`, { method: "DELETE" });
+      await apiFetch(`/api/tasks/${id}`, { method: "DELETE" });
       setTasks(prev => prev.filter(t => t.id !== id && t._id !== id));
     } catch (err) {
       console.error(err);
@@ -597,10 +618,19 @@ export default function App() {
                 properties={properties}
                 clients={clients}
                 tasks={tasks}
+                proposals={proposals}
+                visits={visits}
                 dbStatus={dbStatus}
                 currentUser={currentUser}
                 onAddTask={handleAddTask}
                 onNavigateToTab={(tab) => setActiveTab(tab)}
+                onSelectClient={(client) => setSelectedClient(client)}
+                onPrefillClientForTask={(client) => {
+                  setPrefilledClientForTask(client);
+                  setActiveTab("tasks");
+                }}
+                onToggleTaskCompletion={handleToggleTaskCompletion}
+                onDeleteTask={handleDeleteTask}
               />
             </motion.div>
           )}
@@ -633,6 +663,9 @@ export default function App() {
             >
               <ClientsView
                 clients={clients}
+                tasks={tasks}
+                proposals={proposals}
+                visits={visits}
                 onAddClient={handleAddClient}
                 onSelectClient={(client) => setSelectedClient(client)}
                 currentUser={currentUser}
@@ -651,9 +684,13 @@ export default function App() {
               <PipelineView
                 clients={clients}
                 properties={properties}
+                tasks={tasks}
+                proposals={proposals}
+                visits={visits}
                 onUpdateClient={handleUpdateClient}
                 onSelectClient={(client) => setSelectedClient(client)}
                 onAddClient={handleAddClient}
+                currentUser={currentUser}
               />
             </motion.div>
           )}
@@ -668,11 +705,15 @@ export default function App() {
             >
               <TasksView
                 tasks={tasks}
+                clients={clients}
+                properties={properties}
                 onAddTask={handleAddTask}
                 onToggleTaskCompletion={handleToggleTaskCompletion}
                 onDeleteTask={handleDeleteTask}
                 selectedDate={selectedTaskDate}
                 onDateChange={setSelectedTaskDate}
+                prefilledClientForTask={prefilledClientForTask}
+                onClearPrefilledClient={() => setPrefilledClientForTask(null)}
               />
             </motion.div>
           )}
@@ -861,6 +902,10 @@ export default function App() {
         {selectedClient && (
           <ClientModal
             client={selectedClient}
+            tasks={tasks}
+            proposals={proposals}
+            visits={visits}
+            currentUser={currentUser || undefined}
             onClose={() => setSelectedClient(null)}
             onUpdate={handleUpdateClient}
             onDelete={handleDeleteClient}
@@ -880,7 +925,7 @@ export default function App() {
             }}
             onLogout={async () => {
               try {
-                await fetch("/api/auth/logout", { method: "POST" });
+                await apiFetch("/api/auth/logout", { method: "POST" });
               } catch (err) {
                 console.error("Erro ao realizar logout:", err);
               }

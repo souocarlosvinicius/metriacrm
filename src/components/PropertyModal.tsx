@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { motion } from "motion/react";
 import { Property, Client } from "../types";
+import { apiFetch } from "../api";
 import { X, Bed, Square, Shield, PenTool, Trash2, Sparkles, Loader2, Save, MapPin, DollarSign, Home, Check, Upload, Video, Film, Trash, ExternalLink } from "lucide-react";
 
 interface PropertyModalProps {
@@ -70,7 +71,15 @@ export default function PropertyModal({ property, clients = [], onClose, onUpdat
   // Current user and message signature states
   const [currentUser] = useState<any>(() => {
     const saved = localStorage.getItem("vega_crm_user");
-    return saved ? JSON.parse(saved) : null;
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error("Erro ao analisar vega_crm_user:", e);
+        localStorage.removeItem("vega_crm_user");
+      }
+    }
+    return null;
   });
   const [isCopied, setIsCopied] = useState(false);
 
@@ -198,7 +207,7 @@ ${p.description || "Consulte-me para mais informações sobre este imóvel fant�
   const handleGenerateAiDescription = async () => {
     setIsGeneratingAi(true);
     try {
-      const response = await fetch("/api/ai/generate-description", {
+      const response = await apiFetch("/api/ai/generate-description", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

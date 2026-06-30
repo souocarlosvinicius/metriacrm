@@ -1,15 +1,27 @@
 import React, { useState, useEffect } from "react";
-import { Client, User } from "../types";
-import { Search, UserPlus, Mail, Phone, Plus, X, Save, Loader2, Check } from "lucide-react";
+import { Client, User, Task, Proposal, Visit } from "../types";
+import { getClientAlerts, getAlertBadgeStyles } from "../utils/alerts";
+import { Search, UserPlus, Mail, Phone, Plus, X, Save, Loader2, Check, AlertTriangle } from "lucide-react";
 
 interface ClientsViewProps {
   clients: Client[];
+  tasks?: Task[];
+  proposals?: Proposal[];
+  visits?: Visit[];
   onAddClient: (client: Omit<Client, "id">) => Promise<void>;
   onSelectClient: (client: Client) => void;
   currentUser?: User | null;
 }
 
-export default function ClientsView({ clients, onAddClient, onSelectClient, currentUser }: ClientsViewProps) {
+export default function ClientsView({ 
+  clients, 
+  tasks = [], 
+  proposals = [], 
+  visits = [], 
+  onAddClient, 
+  onSelectClient, 
+  currentUser 
+}: ClientsViewProps) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("Todos");
   const [showAddForm, setShowAddForm] = useState(false);
@@ -125,7 +137,13 @@ export default function ClientsView({ clients, onAddClient, onSelectClient, curr
 
   // Filter clients list
   const filteredClients = clients.filter((c) => {
-    const matchesFilter = filter === "Todos" || c.profileType === filter;
+    let matchesFilter = filter === "Todos";
+    if (filter === "Esfriando") {
+      const alerts = getClientAlerts(c, tasks, proposals, visits);
+      matchesFilter = alerts.length > 0;
+    } else if (filter !== "Todos") {
+      matchesFilter = c.profileType === filter;
+    }
     
     const query = search.toLowerCase();
     const matchesSearch =
@@ -160,18 +178,19 @@ export default function ClientsView({ clients, onAddClient, onSelectClient, curr
 
             {/* Profile Type Filter Chips */}
             <div className="flex gap-2 overflow-x-auto pb-1">
-              {["Todos", "Lead", "Comprador", "Vendedor", "Locador", "Locatário", "Investidor"].map((tab) => {
+              {["Todos", "Esfriando", "Lead", "Comprador", "Vendedor", "Locador", "Locatário", "Investidor"].map((tab) => {
                 const isActive = filter === tab;
                 return (
                   <button
                     key={tab}
                     onClick={() => setFilter(tab)}
-                    className={`px-4 py-2 rounded-full border text-xs font-bold whitespace-nowrap transition-all shadow-sm cursor-pointer ${
+                    className={`px-4 py-2 rounded-full border text-xs font-bold whitespace-nowrap transition-all shadow-sm cursor-pointer flex items-center gap-1.5 ${
                       isActive
-                        ? "bg-primary text-on-primary border-primary"
-                        : "bg-surface-container-lowest border-outline-variant text-on-surface-variant hover:bg-surface-container-high"
+                        ? tab === "Esfriando" ? "bg-red-600 text-white border-red-600" : "bg-primary text-on-primary border-primary"
+                        : tab === "Esfriando" ? "bg-red-50 border-red-200 text-red-800 hover:bg-red-100" : "bg-surface-container-lowest border-outline-variant text-on-surface-variant hover:bg-surface-container-high"
                     }`}
                   >
+                    {tab === "Esfriando" && <AlertTriangle className="w-3.5 h-3.5 shrink-0" />}
                     {tab}
                   </button>
                 );
@@ -187,44 +206,70 @@ export default function ClientsView({ clients, onAddClient, onSelectClient, curr
             </div>
 
             <div className="space-y-3">
-              {filteredClients.map((c, idx) => (
-                <div
-                  key={c.id || c._id || `client-${idx}`}
-                  onClick={() => onSelectClient(c)}
-                  className="bg-surface-container-lowest p-4 rounded-xl flex items-center gap-4 border border-outline-variant/20 shadow-sm hover:shadow-md transition-all active:scale-[0.99] cursor-pointer group"
-                >
-                  <div className="w-12 h-12 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center font-display text-title-md font-bold shadow-inner">
-                    {getInitials(c.name)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-start">
-                      <h4 className="font-display text-sm font-bold text-on-surface group-hover:text-primary transition-colors truncate flex items-center gap-1.5">
-                        {c.name}
-                        {c.clientType === "PJ" ? (
-                          <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-800 text-[9px] font-bold rounded">PJ</span>
-                        ) : (
-                          <span className="px-1.5 py-0.5 bg-amber-50 text-amber-800 text-[9px] font-bold rounded">PF</span>
-                        )}
-                      </h4>
-                      <span className="text-[10px] text-on-surface-variant font-mono whitespace-nowrap">
-                        {new Date(c.createdAt || "").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
-                      </span>
-                    </div>
-                    
-                    <div className="flex items-center gap-3 text-xs text-on-surface-variant font-semibold mt-1">
-                      <span className="flex items-center gap-1">
-                        <Phone className="w-3.5 h-3.5 text-secondary" />
-                        {c.phone}
-                      </span>
-                    </div>
+              {filteredClients.map((c, idx) => {
+                const clientAlerts = getClientAlerts(c, tasks, proposals, visits);
+                return (
+                  <div
+                    key={c.id || c._id || `client-${idx}`}
+                    onClick={() => onSelectClient(c)}
+                    className="bg-surface-container-lowest p-4 rounded-xl flex items-center gap-4 border border-outline-variant/20 shadow-sm hover:shadow-md transition-all active:scale-[0.99] cursor-pointer group relative overflow-hidden"
+                  >
+                    {clientAlerts.length > 0 && (
+                      <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-500" />
+                    )}
 
-                    <p className="text-[11px] text-on-surface-variant flex items-center gap-1.5 mt-2 font-medium">
-                      <span className="w-2 h-2 rounded-full bg-secondary"></span>
-                      {c.profileType} • {c.objective} ({c.propertyType})
-                    </p>
+                    <div className="w-12 h-12 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center font-display text-title-md font-bold shadow-inner shrink-0">
+                      {getInitials(c.name)}
+                    </div>
+                    <div className="flex-1 min-w-0 text-left">
+                      <div className="flex justify-between items-start gap-2">
+                        <h4 className="font-display text-sm font-bold text-on-surface group-hover:text-primary transition-colors truncate flex items-center gap-1.5">
+                          {c.name}
+                          {c.clientType === "PJ" ? (
+                            <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-800 text-[9px] font-bold rounded">PJ</span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 bg-amber-50 text-amber-800 text-[9px] font-bold rounded">PF</span>
+                          )}
+                        </h4>
+                        <span className="text-[10px] text-on-surface-variant font-mono whitespace-nowrap shrink-0">
+                          {new Date(c.createdAt || "").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
+                        </span>
+                      </div>
+                      
+                      <div className="flex items-center gap-3 text-xs text-on-surface-variant font-semibold mt-1">
+                        <span className="flex items-center gap-1">
+                          <Phone className="w-3.5 h-3.5 text-secondary" />
+                          {c.phone}
+                        </span>
+                      </div>
+
+                      <p className="text-[11px] text-on-surface-variant flex items-center gap-1.5 mt-2 font-medium">
+                        <span className="w-2 h-2 rounded-full bg-secondary"></span>
+                        {c.profileType} • {c.objective} ({c.propertyType})
+                      </p>
+
+                      {/* Render client-specific commercial routine alerts */}
+                      {clientAlerts.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mt-2.5">
+                          {clientAlerts.map(alert => {
+                            const badgeStyles = getAlertBadgeStyles(alert.level);
+                            return (
+                              <span 
+                                key={alert.id} 
+                                className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-md flex items-center gap-1 border border-current ${badgeStyles.bg}`}
+                                title={alert.description}
+                              >
+                                <span className="w-1.5 h-1.5 rounded-full bg-current shrink-0 animate-pulse"></span>
+                                {alert.title} ({alert.level})
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 

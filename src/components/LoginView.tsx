@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Home, Lock, User as UserIcon, Mail, Briefcase, Phone, Image as ImageIcon, Loader2 } from "lucide-react";
 import { User } from "../types";
+import { apiFetch } from "../api";
 
 interface LoginViewProps {
   onLoginSuccess: (user: User) => void;
@@ -33,7 +34,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
     setIsLoading(true);
 
     try {
-      const res = await fetch("/api/auth/login", {
+      const res = await apiFetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -61,7 +62,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
     setIsLoading(true);
 
     try {
-      const res = await fetch("/api/auth/register", {
+      const res = await apiFetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

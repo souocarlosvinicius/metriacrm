@@ -17,6 +17,7 @@ import {
   HeartHandshake
 } from "lucide-react";
 import { User } from "../types";
+import { apiFetch } from "../api";
 
 interface OnboardingModalProps {
   user: User;
@@ -92,7 +93,7 @@ export default function OnboardingModal({ user, onComplete }: OnboardingModalPro
         onboardingCompleted: true
       };
 
-      const res = await fetch(`/api/auth/update/${user.id || user._id || user.username || "vega"}`, {
+      const res = await apiFetch(`/api/auth/update/${user.id || user._id || user.username || "vega"}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updatedData),

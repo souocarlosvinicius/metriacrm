@@ -1,18 +1,65 @@
 import React, { useState } from "react";
-import { Property, Client, Task, DBStatus, User } from "../types";
-import { Home, Users, DollarSign, Calendar, MapPin, Sparkles, Loader2, Plus, Check, CheckCircle2, Server, Database, Brain, Cake, Gift } from "lucide-react";
+import { Property, Client, Task, DBStatus, User, Proposal, Visit } from "../types";
+import { apiFetch } from "../api";
+import { getClientAlerts, getAlertBadgeStyles, Alert } from "../utils/alerts";
+import { 
+  Home, 
+  Users, 
+  DollarSign, 
+  Calendar, 
+  MapPin, 
+  Sparkles, 
+  Loader2, 
+  Plus, 
+  Check, 
+  CheckCircle, 
+  CheckCircle2, 
+  Server, 
+  Database, 
+  Brain, 
+  Cake, 
+  Gift,
+  CheckSquare,
+  ArrowRight,
+  Clock,
+  MessageSquare,
+  AlertCircle,
+  AlertTriangle,
+  Flame,
+  TrendingDown
+} from "lucide-react";
 
 interface DashboardViewProps {
   properties: Property[];
   clients: Client[];
   tasks: Task[];
+  proposals?: Proposal[];
+  visits?: Visit[];
   dbStatus: DBStatus | null;
   currentUser?: User | null;
   onAddTask: (task: Omit<Task, "id">) => Promise<void>;
   onNavigateToTab: (tab: string) => void;
+  onPrefillClientForTask?: (client: Client) => void;
+  onToggleTaskCompletion?: (id: string, completed: boolean) => Promise<void>;
+  onDeleteTask?: (id: string) => Promise<void>;
+  onSelectClient?: (client: Client) => void;
 }
 
-export default function DashboardView({ properties, clients, tasks, dbStatus, currentUser, onAddTask, onNavigateToTab }: DashboardViewProps) {
+export default function DashboardView({ 
+  properties = [], 
+  clients = [], 
+  tasks = [], 
+  proposals = [],
+  visits = [],
+  dbStatus, 
+  currentUser, 
+  onAddTask, 
+  onNavigateToTab,
+  onPrefillClientForTask,
+  onToggleTaskCompletion,
+  onDeleteTask,
+  onSelectClient
+}: DashboardViewProps) {
   const [isGeneratingAiTasks, setIsGeneratingAiTasks] = useState(false);
   const [suggestedAiTasks, setSuggestedAiTasks] = useState<Task[]>([]);
   const [aiTasksAdded, setAiTasksAdded] = useState<Record<number, boolean>>({});
@@ -120,7 +167,7 @@ export default function DashboardView({ properties, clients, tasks, dbStatus, cu
     setAiTasksAdded({});
     
     try {
-      const response = await fetch("/api/ai/suggest-tasks", {
+      const response = await apiFetch("/api/ai/suggest-tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -163,6 +210,54 @@ export default function DashboardView({ properties, clients, tasks, dbStatus, cu
       alert("Falha ao adicionar tarefa recomendada.");
     }
   };
+
+  // Calculations for commercial routine highlights
+  const todayStr = new Date().toISOString().split("T")[0];
+  const now = new Date();
+  const currentHM = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+
+  const overdueTasks = tasks.filter(t => {
+    if (t.completed) return false;
+    if (t.date < todayStr) return true;
+    if (t.date === todayStr && t.time < currentHM) return true;
+    return false;
+  });
+
+  const todayTasks = tasks.filter(t => t.date === todayStr && !t.completed);
+
+  const activeClients = clients.filter(c => c.status !== "Ganho" && c.status !== "Perdido");
+  
+  const leadsWithNoAction = activeClients.filter(c => {
+    const clientTasks = tasks.filter(t => {
+      const matchesId = t.clientId === c.id || t._id?.toString() === c.id || t.clientId === c._id?.toString();
+      const matchesName = t.clientName.toLowerCase() === c.name.toLowerCase();
+      return matchesId || matchesName;
+    });
+    const hasPending = clientTasks.some(t => !t.completed && t.date >= todayStr);
+    return !hasPending;
+  });
+
+  // Calculate stagnant alerts for all clients
+  const allStagnantAlerts = clients.flatMap(client => {
+    const clientAlerts = getClientAlerts(client, tasks, proposals, visits);
+    return clientAlerts.map(alert => ({
+      ...alert,
+      client
+    }));
+  });
+
+  // Sort by priority level: Crítico > Urgente > Atenção
+  const alertPriority = { "Crítico": 1, "Urgente": 2, "Atenção": 3 };
+  const sortedStagnantAlerts = [...allStagnantAlerts].sort(
+    (a, b) => alertPriority[a.level] - alertPriority[b.level]
+  );
+
+  const [alertFilter, setAlertFilter] = useState<"Todos" | "Crítico" | "Urgente" | "Atenção">("Todos");
+
+  const filteredStagnantAlerts = sortedStagnantAlerts.filter(alert => {
+    if (alertFilter === "Todos") return true;
+    return alert.level === alertFilter;
+  });
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
@@ -217,6 +312,329 @@ export default function DashboardView({ properties, clients, tasks, dbStatus, cu
             </span>
           </div>
         )}
+      </section>
+
+      {/* SEÇÃO ALERTAS DE NEGOCIAÇÕES PARADAS (OPORTUNIDADES ESFRIANDO) */}
+      <section className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="space-y-1">
+            <h3 className="font-display text-title-lg text-primary font-bold flex items-center gap-2">
+              <span className="p-1.5 bg-red-500/10 rounded-lg">
+                <AlertTriangle className="w-5 h-5 text-red-600 animate-pulse" />
+              </span>
+              Oportunidades Esfriando e Alertas Comerciais
+            </h3>
+            <p className="text-xs text-on-surface-variant font-medium">
+              Leads e negociações estagnadas que exigem atenção imediata para não esfriarem
+            </p>
+          </div>
+          
+          {/* Quick filter tabs */}
+          {sortedStagnantAlerts.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 bg-surface-container-low p-1 rounded-xl border border-outline-variant/25">
+              {(["Todos", "Crítico", "Urgente", "Atenção"] as const).map(tab => {
+                const count = tab === "Todos" 
+                  ? sortedStagnantAlerts.length 
+                  : sortedStagnantAlerts.filter(a => a.level === tab).length;
+                return (
+                  <button
+                    key={tab}
+                    onClick={() => setAlertFilter(tab)}
+                    className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                      alertFilter === tab 
+                        ? tab === "Crítico" ? "bg-red-600 text-white"
+                          : tab === "Urgente" ? "bg-orange-600 text-white"
+                          : tab === "Atenção" ? "bg-amber-500 text-white"
+                          : "bg-primary text-on-primary"
+                        : "text-on-surface-variant hover:bg-surface-container-high"
+                    }`}
+                  >
+                    <span>{tab}</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                      alertFilter === tab ? "bg-white/25 text-white" : "bg-surface-container-highest text-on-surface-variant"
+                    }`}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {sortedStagnantAlerts.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[400px] overflow-y-auto pr-1 no-scrollbar">
+            {filteredStagnantAlerts.length > 0 ? (
+              filteredStagnantAlerts.map((alert) => {
+                const styles = getAlertBadgeStyles(alert.level);
+                return (
+                  <div 
+                    key={alert.id}
+                    className={`p-4 bg-white border ${styles.border} hover:shadow-md rounded-2xl flex flex-col justify-between gap-3 transition-all text-left relative overflow-hidden`}
+                  >
+                    {/* Visual left accent bar matching level */}
+                    <div className={`absolute left-0 top-0 bottom-0 w-1 ${
+                      alert.level === "Crítico" ? "bg-red-600" : alert.level === "Urgente" ? "bg-orange-500" : "bg-amber-400"
+                    }`} />
+                    
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${styles.bg} border border-current`}>
+                          {alert.level}
+                        </span>
+                        
+                        <span className="text-[10px] text-on-surface-variant/70 font-mono font-semibold">
+                          Regra #{alert.ruleId}
+                        </span>
+                      </div>
+                      
+                      <h4 className="font-display font-black text-base text-primary flex items-center gap-1.5">
+                        {alert.level === "Crítico" ? (
+                          <Flame className="w-4 h-4 text-red-600 animate-pulse shrink-0" />
+                        ) : (
+                          <TrendingDown className="w-4 h-4 text-orange-500 shrink-0" />
+                        )}
+                        {alert.title}
+                      </h4>
+                      
+                      <p className="text-xs text-on-surface-variant font-medium mt-1">
+                        {alert.description}
+                      </p>
+                    </div>
+
+                    <div className="pt-2 border-t border-outline-variant/30 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] text-on-surface-variant/70 font-bold uppercase tracking-wider">Cliente / Lead</p>
+                        <p className="text-sm font-bold text-on-surface truncate max-w-[150px]">{alert.client.name}</p>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {alert.client.phone && (
+                          <a
+                            href={`https://wa.me/${alert.client.phone.replace(/\D/g, "")}?text=${encodeURIComponent(
+                              `Olá, ${alert.client.name.split(" ")[0]}! Aqui é o ${currentUser?.commercialName || "seu corretor"}. Gostaria de alinhar nossos próximos passos...`
+                            )}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="w-8 h-8 rounded-xl bg-emerald-500 text-white flex items-center justify-center hover:bg-emerald-600 shadow-sm transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                            title="Entrar em contato via WhatsApp"
+                          >
+                            <MessageSquare className="w-4 h-4 fill-white text-emerald-500" />
+                          </a>
+                        )}
+                        
+                        <button
+                          onClick={() => onSelectClient && onSelectClient(alert.client)}
+                          className="px-3 py-1.5 bg-primary/10 text-primary hover:bg-primary/15 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1"
+                        >
+                          Ver Ficha
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="col-span-full bg-surface-container-lowest p-8 rounded-2xl border border-outline-variant/30 text-center py-10 text-on-surface-variant">
+                <p className="text-xs font-medium">Nenhum alerta comercial encontrado para o nível selecionado.</p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="bg-emerald-50/50 p-6 rounded-2xl border border-emerald-100/60 flex items-center gap-4 text-left">
+            <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+              <CheckCircle2 className="w-7 h-7" />
+            </div>
+            <div>
+              <h4 className="font-display font-bold text-emerald-900 text-sm">Esteira Blindada e Ativa!</h4>
+              <p className="text-xs text-emerald-800 font-medium mt-0.5">
+                Incrível! Todas as suas oportunidades estão ativas, com follow-ups em dia e propostas acompanhadas.
+              </p>
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* SEÇÃO METRIA COMERCIAL: ACOMPANHAMENTO E ROTINA */}
+      <section className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-display text-title-lg text-primary font-bold flex items-center gap-2">
+            <span className="p-1.5 bg-primary/10 rounded-lg">
+              <CheckSquare className="w-5 h-5 text-primary" />
+            </span>
+            Rotina Comercial e Alertas de Follow-up
+          </h3>
+          <button 
+            onClick={() => onNavigateToTab("tasks")} 
+            className="text-xs text-secondary hover:underline font-bold flex items-center gap-1 cursor-pointer"
+          >
+            Ver Minha Agenda <ArrowRight className="w-3 h-3" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* 1. Tarefas Atrasadas */}
+          <div className="bg-surface-container-lowest p-5 rounded-2xl border border-outline-variant/30 shadow-sm flex flex-col justify-between min-h-[300px]">
+            <div>
+              <div className="flex items-center justify-between mb-3 pb-2 border-b border-outline-variant/30">
+                <h4 className="font-display text-sm font-bold text-on-surface flex items-center gap-1.5">
+                  <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${overdueTasks.length > 0 ? "bg-red-500 animate-pulse" : "bg-emerald-500"}`}></span>
+                  Atrasadas ({overdueTasks.length})
+                </h4>
+                {overdueTasks.length > 0 && (
+                  <span className="text-[10px] bg-red-100 text-red-800 px-2 py-0.5 rounded-full font-extrabold uppercase animate-pulse">
+                    Atenção
+                  </span>
+                )}
+              </div>
+
+              <div className="space-y-3 max-h-[220px] overflow-y-auto no-scrollbar">
+                {overdueTasks.length > 0 ? (
+                  overdueTasks.map((t, idx) => (
+                    <div key={`overdue-${idx}`} className="p-3 bg-red-50/20 hover:bg-red-50/40 border border-red-100 rounded-xl flex items-start justify-between gap-2.5 transition-all text-left">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1 text-[10px] font-bold text-red-700">
+                          <Clock className="w-3 h-3 shrink-0" />
+                          <span>{t.date.split("-").reverse().slice(0, 2).join("/")} às {t.time}</span>
+                        </div>
+                        <p className="font-bold text-sm text-on-surface truncate mt-1">{t.title}</p>
+                        <p className="text-[11px] text-on-surface-variant font-medium mt-0.5">Cliente: <span className="font-bold text-primary">{t.clientName}</span></p>
+                      </div>
+                      <button
+                        onClick={() => onToggleTaskCompletion && onToggleTaskCompletion(t.id || t._id || "", true)}
+                        className="w-7 h-7 rounded-lg border border-red-200 bg-white hover:bg-emerald-50 hover:border-emerald-500 hover:text-emerald-700 flex items-center justify-center transition-all cursor-pointer shadow-sm text-on-surface-variant shrink-0"
+                        title="Concluir tarefa"
+                      >
+                        <Check className="w-4 h-4 stroke-[2.5]" />
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <div className="flex flex-col items-center justify-center text-center py-10 text-on-surface-variant">
+                    <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mb-2">
+                      <CheckCircle className="w-6 h-6 stroke-[2.5]" />
+                    </div>
+                    <p className="text-xs font-bold text-emerald-800">Tudo em dia!</p>
+                    <p className="text-[10px] opacity-75 mt-0.5 px-3">Você não possui nenhum follow-up comercial em atraso.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* 2. Follow-ups do Dia */}
+          <div className="bg-surface-container-lowest p-5 rounded-2xl border border-outline-variant/30 shadow-sm flex flex-col justify-between min-h-[300px]">
+            <div>
+              <div className="flex items-center justify-between mb-3 pb-2 border-b border-outline-variant/30">
+                <h4 className="font-display text-sm font-bold text-on-surface flex items-center gap-1.5">
+                  <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${todayTasks.length > 0 ? "bg-amber-500 animate-pulse" : "bg-emerald-500"}`}></span>
+                  Follow-ups do Dia ({todayTasks.length})
+                </h4>
+                <span className="text-[10px] bg-slate-100 text-slate-800 px-2 py-0.5 rounded-full font-bold">
+                  Hoje
+                </span>
+              </div>
+
+              <div className="space-y-3 max-h-[220px] overflow-y-auto no-scrollbar">
+                {todayTasks.length > 0 ? (
+                  todayTasks.map((t, idx) => (
+                    <div key={`today-${idx}`} className="p-3 bg-surface hover:bg-surface-container-low border border-outline-variant/20 rounded-xl flex items-start justify-between gap-2.5 transition-all text-left">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1 text-[10px] font-bold text-on-surface-variant">
+                          <Clock className="w-3 h-3 shrink-0 text-primary" />
+                          <span>Hoje às {t.time}</span>
+                          <span className={`ml-1.5 px-1.5 py-0.2 text-[8px] rounded font-bold uppercase ${
+                            t.priority === "alta" ? "bg-red-100 text-red-800" : t.priority === "média" ? "bg-amber-100 text-amber-800" : "bg-slate-100 text-slate-700"
+                          }`}>{t.priority}</span>
+                        </div>
+                        <p className="font-bold text-sm text-on-surface truncate mt-1">{t.title}</p>
+                        <p className="text-[11px] text-on-surface-variant font-medium mt-0.5">Cliente: <span className="font-bold text-primary">{t.clientName}</span></p>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {t.type === "Enviar WhatsApp" && (
+                          <a
+                            href={`https://wa.me/${clients.find(c => c.name === t.clientName || c.id === t.clientId)?.phone.replace(/\D/g, "")}?text=${encodeURIComponent(`Olá, gostaria de conversar sobre o seu atendimento no Metria CRM...`)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="w-7 h-7 rounded-lg bg-emerald-500 text-white flex items-center justify-center hover:bg-emerald-600 shadow-sm cursor-pointer shrink-0"
+                            title="Chamar no WhatsApp"
+                          >
+                            <MessageSquare className="w-3.5 h-3.5 fill-white text-emerald-500" />
+                          </a>
+                        )}
+                        <button
+                          onClick={() => onToggleTaskCompletion && onToggleTaskCompletion(t.id || t._id || "", true)}
+                          className="w-7 h-7 rounded-lg border border-outline-variant bg-white hover:bg-emerald-50 hover:border-emerald-500 hover:text-emerald-700 flex items-center justify-center transition-all cursor-pointer shadow-sm text-on-surface-variant"
+                          title="Concluir tarefa"
+                        >
+                          <Check className="w-4 h-4 stroke-[2.5]" />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="flex flex-col items-center justify-center text-center py-10 text-on-surface-variant">
+                    <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center mb-2">
+                      <CheckCircle className="w-6 h-6 stroke-[2.5]" />
+                    </div>
+                    <p className="text-xs font-bold text-blue-800">Tudo em dia para hoje!</p>
+                    <p className="text-[10px] opacity-75 mt-0.5 px-3">Nenhum compromisso pendente para hoje. Ótima oportunidade para prospecção!</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* 3. Leads Sem Próxima Action */}
+          <div className="bg-surface-container-lowest p-5 rounded-2xl border border-outline-variant/30 shadow-sm flex flex-col justify-between min-h-[300px]">
+            <div>
+              <div className="flex items-center justify-between mb-3 pb-2 border-b border-outline-variant/30">
+                <h4 className="font-display text-sm font-bold text-on-surface flex items-center gap-1.5">
+                  <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${leadsWithNoAction.length > 0 ? "bg-orange-500 animate-pulse" : "bg-emerald-500"}`}></span>
+                  Leads Sem Ação ({leadsWithNoAction.length})
+                </h4>
+                {leadsWithNoAction.length > 0 && (
+                  <span className="text-[10px] bg-orange-100 text-orange-800 px-2 py-0.5 rounded-full font-bold animate-pulse">
+                    Frio
+                  </span>
+                )}
+              </div>
+
+              <div className="space-y-3 max-h-[220px] overflow-y-auto no-scrollbar">
+                {leadsWithNoAction.length > 0 ? (
+                  leadsWithNoAction.map((c, idx) => (
+                    <div key={`no-action-${idx}`} className="p-3 bg-orange-50/10 hover:bg-orange-50/25 border border-orange-200/50 rounded-xl flex items-center justify-between gap-2.5 transition-all text-left">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-bold text-sm text-on-surface truncate">{c.name}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-on-surface-variant font-semibold">
+                          <span>{c.profileType}</span>
+                          <span>•</span>
+                          <span className="px-1.5 py-0.2 bg-slate-100 rounded text-slate-800">{c.status}</span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => onPrefillClientForTask && onPrefillClientForTask(c)}
+                        className="px-3 py-1.5 bg-primary text-on-primary hover:bg-primary/95 text-xs font-bold rounded-lg flex items-center gap-1 shadow-sm transition-all active:scale-95 cursor-pointer shrink-0"
+                        title="Agendar follow-up imediato"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Agendar
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <div className="flex flex-col items-center justify-center text-center py-10 text-on-surface-variant">
+                    <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center mb-2">
+                      <Sparkles className="w-6 h-6 stroke-[2.5]" />
+                    </div>
+                    <p className="text-xs font-bold text-amber-800">Leads Blindados!</p>
+                    <p className="text-[10px] opacity-75 mt-0.5 px-3">Incrível! Todos os seus leads ativos possuem alguma tarefa agendada.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
       {/* Birthday Alerts Banner */}
