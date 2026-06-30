@@ -1,0 +1,704 @@
+import React, { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "motion/react";
+import { LayoutDashboard, Home, Users, CalendarDays, Bell, Sparkles, Search, X, FolderSync } from "lucide-react";
+import { Property, Client, Task, DBStatus, User } from "./types";
+import DashboardView from "./components/DashboardView";
+import PropertiesView from "./components/PropertiesView";
+import ClientsView from "./components/ClientsView";
+import TasksView from "./components/TasksView";
+import PipelineView from "./components/PipelineView";
+import PropertyModal from "./components/PropertyModal";
+import ClientModal from "./components/ClientModal";
+import LoginView from "./components/LoginView";
+import UserProfileModal from "./components/UserProfileModal";
+
+export default function App() {
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    const saved = localStorage.getItem("vega_crm_user");
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [showProfileModal, setShowProfileModal] = useState(false);
+
+  const [activeTab, setActiveTab] = useState<string>("dashboard");
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [dbStatus, setDbStatus] = useState<DBStatus | null>(null);
+
+  // Selected entities for detail modal view
+  const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+
+  // Global search states
+  const [globalSearchQuery, setGlobalSearchQuery] = useState("");
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const [selectedTaskDate, setSelectedTaskDate] = useState<string>(() => new Date().toISOString().split("T")[0]);
+
+  // Click outside listener for search bar
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest(".search-container")) {
+        setShowSearchResults(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  const filteredProperties = React.useMemo(() => {
+    if (!globalSearchQuery.trim()) return [];
+    const query = globalSearchQuery.toLowerCase();
+    return properties.filter(p =>
+      p.title?.toLowerCase().includes(query) ||
+      p.neighborhood?.toLowerCase().includes(query) ||
+      p.city?.toLowerCase().includes(query) ||
+      p.address?.toLowerCase().includes(query) ||
+      p.type?.toLowerCase().includes(query)
+    ).slice(0, 4);
+  }, [properties, globalSearchQuery]);
+
+  const filteredClients = React.useMemo(() => {
+    if (!globalSearchQuery.trim()) return [];
+    const query = globalSearchQuery.toLowerCase();
+    return clients.filter(c =>
+      c.name?.toLowerCase().includes(query) ||
+      c.phone?.toLowerCase().includes(query) ||
+      c.email?.toLowerCase().includes(query) ||
+      c.observations?.toLowerCase().includes(query) ||
+      c.profileType?.toLowerCase().includes(query)
+    ).slice(0, 4);
+  }, [clients, globalSearchQuery]);
+
+  const filteredTasks = React.useMemo(() => {
+    if (!globalSearchQuery.trim()) return [];
+    const query = globalSearchQuery.toLowerCase();
+    return tasks.filter(t =>
+      t.title?.toLowerCase().includes(query) ||
+      t.clientName?.toLowerCase().includes(query) ||
+      t.description?.toLowerCase().includes(query) ||
+      t.type?.toLowerCase().includes(query)
+    ).slice(0, 4);
+  }, [tasks, globalSearchQuery]);
+
+  const hasSearchResults = filteredProperties.length > 0 || filteredClients.length > 0 || filteredTasks.length > 0;
+
+  // Fetch all initial data
+  const fetchData = async () => {
+    try {
+      const [resProps, resClients, resTasks, resStatus] = await Promise.all([
+        fetch("/api/properties"),
+        fetch("/api/clients"),
+        fetch("/api/tasks"),
+        fetch("/api/status")
+      ]);
+
+      const [dataProps, dataClients, dataTasks, dataStatus] = await Promise.all([
+        resProps.json(),
+        resClients.json(),
+        resTasks.json(),
+        resStatus.json()
+      ]);
+
+      if (Array.isArray(dataProps)) setProperties(dataProps);
+      if (Array.isArray(dataClients)) setClients(dataClients);
+      if (Array.isArray(dataTasks)) setTasks(dataTasks);
+      setDbStatus(dataStatus);
+    } catch (err) {
+      console.error("Erro ao buscar dados do servidor:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (currentUser) {
+      fetchData();
+    }
+  }, [currentUser]);
+
+  // --- CONTROLLERS ---
+
+  // Properties
+  const handleAddProperty = async (newProp: Omit<Property, "id">) => {
+    try {
+      const res = await fetch("/api/properties", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newProp)
+      });
+      const data = await res.json();
+      setProperties(prev => [data, ...prev]);
+    } catch (err) {
+      console.error(err);
+      throw err;
+    }
+  };
+
+  const handleUpdateProperty = async (updated: Property) => {
+    const id = updated.id || updated._id;
+    try {
+      const res = await fetch(`/api/properties/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updated)
+      });
+      const data = await res.json();
+      setProperties(prev => prev.map(p => (p.id === id || p._id === id ? data : p)));
+      setSelectedProperty(data);
+    } catch (err) {
+      console.error(err);
+      throw err;
+    }
+  };
+
+  const handleDeleteProperty = async (id: string) => {
+    try {
+      await fetch(`/api/properties/${id}`, { method: "DELETE" });
+      setProperties(prev => prev.filter(p => p.id !== id && p._id !== id));
+      setSelectedProperty(null);
+    } catch (err) {
+      console.error(err);
+      throw err;
+    }
+  };
+
+  // Clients
+  const handleAddClient = async (newClient: Omit<Client, "id">) => {
+    try {
+      const res = await fetch("/api/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newClient)
+      });
+      const data = await res.json();
+      setClients(prev => [data, ...prev]);
+    } catch (err) {
+      console.error(err);
+      throw err;
+    }
+  };
+
+  const handleUpdateClient = async (updated: Client) => {
+    const id = updated.id || updated._id;
+    try {
+      const res = await fetch(`/api/clients/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updated)
+      });
+      const data = await res.json();
+      setClients(prev => prev.map(c => (c.id === id || c._id === id ? data : c)));
+      if (selectedClient && (selectedClient.id === id || selectedClient._id === id)) {
+        setSelectedClient(data);
+      }
+    } catch (err) {
+      console.error(err);
+      throw err;
+    }
+  };
+
+  const handleDeleteClient = async (id: string) => {
+    try {
+      await fetch(`/api/clients/${id}`, { method: "DELETE" });
+      setClients(prev => prev.filter(c => c.id !== id && c._id !== id));
+      setSelectedClient(null);
+    } catch (err) {
+      console.error(err);
+      throw err;
+    }
+  };
+
+  // Tasks
+  const handleAddTask = async (newTask: Omit<Task, "id">) => {
+    try {
+      const res = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newTask)
+      });
+      const data = await res.json();
+      setTasks(prev => [...prev, data]);
+    } catch (err) {
+      console.error(err);
+      throw err;
+    }
+  };
+
+  const handleToggleTaskCompletion = async (id: string, completed: boolean) => {
+    try {
+      const res = await fetch(`/api/tasks/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ completed })
+      });
+      const data = await res.json();
+      setTasks(prev => prev.map(t => (t.id === id || t._id === id ? data : t)));
+    } catch (err) {
+      console.error(err);
+      throw err;
+    }
+  };
+
+  const handleDeleteTask = async (id: string) => {
+    try {
+      await fetch(`/api/tasks/${id}`, { method: "DELETE" });
+      setTasks(prev => prev.filter(t => t.id !== id && t._id !== id));
+    } catch (err) {
+      console.error(err);
+      throw err;
+    }
+  };
+
+  if (!currentUser) {
+    return (
+      <LoginView
+        onLoginSuccess={(user) => {
+          localStorage.setItem("vega_crm_user", JSON.stringify(user));
+          setCurrentUser(user);
+        }}
+      />
+    );
+  }
+
+  return (
+    <div className="bg-background min-h-screen text-on-surface font-sans flex flex-col pb-28 md:pb-6">
+      
+      {/* Top Application Bar */}
+      <header className="flex justify-between items-center px-4 md:px-8 h-16 w-full sticky top-0 z-40 bg-surface/90 backdrop-blur-md border-b border-outline-variant/60 shadow-sm transition-all">
+        <div className="flex items-center gap-3 shrink-0">
+          {/* Brand Visual Logo */}
+          <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-white shadow-md shrink-0">
+            <Home className="w-5 h-5 text-secondary-fixed animate-pulse" />
+          </div>
+          <div className="hidden sm:block">
+            <h1 className="font-display text-lg font-bold text-primary tracking-tight leading-none">Metria CRM</h1>
+          </div>
+        </div>
+
+        {/* Global Search Bar */}
+        <div className="flex-1 max-w-xs md:max-w-md mx-2 md:mx-6 relative search-container">
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/60" />
+            <input
+              type="text"
+              placeholder="Buscar imóveis, clientes, tarefas..."
+              value={globalSearchQuery}
+              onChange={(e) => {
+                setGlobalSearchQuery(e.target.value);
+                setShowSearchResults(true);
+              }}
+              onFocus={() => setShowSearchResults(true)}
+              className="w-full pl-9 pr-8 py-1.5 text-xs md:text-sm bg-surface-container-high border border-outline-variant/40 rounded-full focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all text-on-surface"
+            />
+            {globalSearchQuery && (
+              <button
+                onClick={() => {
+                  setGlobalSearchQuery("");
+                  setShowSearchResults(false);
+                }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant/60 hover:text-on-surface"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          {/* Search Dropdown Results */}
+          {showSearchResults && globalSearchQuery.trim().length > 0 && (
+            <div className="absolute top-full left-0 right-0 mt-2 bg-surface-container border border-outline-variant rounded-2xl shadow-xl z-50 max-h-[400px] overflow-y-auto p-2">
+              {!hasSearchResults ? (
+                <div className="p-4 text-center text-xs md:text-sm text-on-surface-variant">
+                  Nenhum resultado encontrado para "{globalSearchQuery}"
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {/* Imóveis */}
+                  {filteredProperties.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold text-primary uppercase tracking-wider bg-primary/5 rounded-lg">
+                        <Home className="w-3.5 h-3.5 text-primary" />
+                        Imóveis
+                      </div>
+                      <div className="mt-1 space-y-0.5">
+                        {filteredProperties.map(p => (
+                          <button
+                            key={p.id || p._id}
+                            onClick={() => {
+                              setSelectedProperty(p);
+                              setGlobalSearchQuery("");
+                              setShowSearchResults(false);
+                            }}
+                            className="w-full text-left px-3 py-2 rounded-xl hover:bg-surface-container-highest transition-colors flex justify-between items-center"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-semibold text-on-surface line-clamp-1">{p.title}</div>
+                              <div className="text-xs text-on-surface-variant line-clamp-1">{p.neighborhood}, {p.city}</div>
+                            </div>
+                            <div className="text-right ml-2 shrink-0">
+                              <span className="text-xs font-mono font-bold text-primary">
+                                {(p.price ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}
+                              </span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Clientes */}
+                  {filteredClients.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold text-secondary uppercase tracking-wider bg-secondary/5 rounded-lg">
+                        <Users className="w-3.5 h-3.5 text-secondary" />
+                        Clientes
+                      </div>
+                      <div className="mt-1 space-y-0.5">
+                        {filteredClients.map(c => (
+                          <button
+                            key={c.id || c._id}
+                            onClick={() => {
+                              setSelectedClient(c);
+                              setGlobalSearchQuery("");
+                              setShowSearchResults(false);
+                            }}
+                            className="w-full text-left px-3 py-2 rounded-xl hover:bg-surface-container-highest transition-colors flex justify-between items-center"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-semibold text-on-surface line-clamp-1">{c.name}</div>
+                              <div className="text-xs text-on-surface-variant line-clamp-1">{c.email || c.phone}</div>
+                            </div>
+                            <div className="text-right ml-2 shrink-0">
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-secondary-container text-on-secondary-container">
+                                {c.profileType}
+                              </span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Tarefas */}
+                  {filteredTasks.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-highest rounded-lg">
+                        <CalendarDays className="w-3.5 h-3.5 text-on-surface-variant" />
+                        Tarefas
+                      </div>
+                      <div className="mt-1 space-y-0.5">
+                        {filteredTasks.map(t => (
+                          <button
+                            key={t.id || t._id}
+                            onClick={() => {
+                              setSelectedTaskDate(t.date);
+                              setActiveTab("tasks");
+                              setGlobalSearchQuery("");
+                              setShowSearchResults(false);
+                            }}
+                            className="w-full text-left px-3 py-2 rounded-xl hover:bg-surface-container-highest transition-colors flex justify-between items-center"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-semibold text-on-surface line-clamp-1">{t.title}</div>
+                              <div className="text-xs text-on-surface-variant line-clamp-1">{t.description || `Com: ${t.clientName}`}</div>
+                            </div>
+                            <div className="text-right ml-2 shrink-0">
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary-container text-on-primary-container block mb-1">
+                                {t.type}
+                              </span>
+                              <span className="text-[10px] text-on-surface-variant block font-mono">
+                                {t.date.split("-").reverse().slice(0, 2).join("/")} às {t.time}
+                              </span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Action icons & Profile */}
+        <div className="flex items-center gap-3 shrink-0">
+          <button className="p-2 rounded-full hover:bg-surface-container-high transition-colors text-on-surface-variant relative">
+            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-secondary"></span>
+            <Bell className="w-5 h-5" />
+          </button>
+          
+          {/* Agent Headshot */}
+          <button
+            onClick={() => setShowProfileModal(true)}
+            className="w-9 h-9 rounded-full overflow-hidden border border-primary/20 bg-primary/10 hover:ring-2 hover:ring-primary/40 hover:scale-105 transition-all cursor-pointer"
+            title="Configurações de Perfil"
+          >
+            <img
+              className="w-full h-full object-cover"
+              src={currentUser.avatarUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80"}
+              alt={currentUser.name}
+            />
+          </button>
+        </div>
+      </header>
+
+      {/* Main Container Stage */}
+      <main className={`${activeTab === "pipeline" ? "max-w-7xl md:px-8" : "max-w-4xl md:px-6"} w-full mx-auto px-4 py-6 flex-grow transition-all duration-300`}>
+        <AnimatePresence mode="wait">
+          {activeTab === "dashboard" && (
+            <motion.div
+              key="dashboard"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <DashboardView
+                properties={properties}
+                clients={clients}
+                tasks={tasks}
+                dbStatus={dbStatus}
+                onAddTask={handleAddTask}
+                onNavigateToTab={(tab) => setActiveTab(tab)}
+              />
+            </motion.div>
+          )}
+
+          {activeTab === "properties" && (
+            <motion.div
+              key="properties"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <PropertiesView
+                properties={properties}
+                clients={clients}
+                onAddProperty={handleAddProperty}
+                onSelectProperty={(prop) => setSelectedProperty(prop)}
+                currentUser={currentUser}
+              />
+            </motion.div>
+          )}
+
+          {activeTab === "clients" && (
+            <motion.div
+              key="clients"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <ClientsView
+                clients={clients}
+                onAddClient={handleAddClient}
+                onSelectClient={(client) => setSelectedClient(client)}
+              />
+            </motion.div>
+          )}
+
+          {activeTab === "pipeline" && (
+            <motion.div
+              key="pipeline"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <PipelineView
+                clients={clients}
+                properties={properties}
+                onUpdateClient={handleUpdateClient}
+                onSelectClient={(client) => setSelectedClient(client)}
+                onAddClient={handleAddClient}
+              />
+            </motion.div>
+          )}
+
+          {activeTab === "tasks" && (
+            <motion.div
+              key="tasks"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <TasksView
+                tasks={tasks}
+                onAddTask={handleAddTask}
+                onToggleTaskCompletion={handleToggleTaskCompletion}
+                onDeleteTask={handleDeleteTask}
+                selectedDate={selectedTaskDate}
+                onDateChange={setSelectedTaskDate}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </main>
+
+      {/* Bottom Sticky Navigation (for Mobile and compact layouts) */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-surface/95 backdrop-blur-md border-t border-outline-variant flex justify-around items-center py-2 pb-safe rounded-t-2xl shadow-[0_-4px_16px_rgba(0,53,39,0.06)] md:hidden">
+        {/* Dashboard Link */}
+        <button
+          onClick={() => setActiveTab("dashboard")}
+          className={`flex flex-col items-center justify-center px-4 py-1.5 rounded-xl transition-all cursor-pointer ${
+            activeTab === "dashboard"
+              ? "bg-secondary-container text-on-secondary-container scale-105 font-bold"
+              : "text-on-surface-variant hover:bg-surface-container-high"
+          }`}
+        >
+          <LayoutDashboard className="w-5 h-5 stroke-[2]" />
+          <span className="text-[10px] mt-1 font-semibold">Dashboard</span>
+        </button>
+
+        {/* Properties Link */}
+        <button
+          onClick={() => setActiveTab("properties")}
+          className={`flex flex-col items-center justify-center px-4 py-1.5 rounded-xl transition-all cursor-pointer ${
+            activeTab === "properties"
+              ? "bg-secondary-container text-on-secondary-container scale-105 font-bold"
+              : "text-on-surface-variant hover:bg-surface-container-high"
+          }`}
+        >
+          <Home className="w-5 h-5 stroke-[2]" />
+          <span className="text-[10px] mt-1 font-semibold">Imóveis</span>
+        </button>
+
+        {/* Clients Link */}
+        <button
+          onClick={() => setActiveTab("clients")}
+          className={`flex flex-col items-center justify-center px-4 py-1.5 rounded-xl transition-all cursor-pointer ${
+            activeTab === "clients"
+              ? "bg-secondary-container text-on-secondary-container scale-105 font-bold"
+              : "text-on-surface-variant hover:bg-surface-container-high"
+          }`}
+        >
+          <Users className="w-5 h-5 stroke-[2]" />
+          <span className="text-[10px] mt-1 font-semibold">Clientes</span>
+        </button>
+
+        {/* Pipeline Link */}
+        <button
+          onClick={() => setActiveTab("pipeline")}
+          className={`flex flex-col items-center justify-center px-4 py-1.5 rounded-xl transition-all cursor-pointer ${
+            activeTab === "pipeline"
+              ? "bg-secondary-container text-on-secondary-container scale-105 font-bold"
+              : "text-on-surface-variant hover:bg-surface-container-high"
+          }`}
+        >
+          <FolderSync className="w-5 h-5 stroke-[2]" />
+          <span className="text-[10px] mt-1 font-semibold">Esteira</span>
+        </button>
+
+        {/* Tasks Link */}
+        <button
+          onClick={() => setActiveTab("tasks")}
+          className={`flex flex-col items-center justify-center px-4 py-1.5 rounded-xl transition-all cursor-pointer ${
+            activeTab === "tasks"
+              ? "bg-secondary-container text-on-secondary-container scale-105 font-bold"
+              : "text-on-surface-variant hover:bg-surface-container-high"
+          }`}
+        >
+          <CalendarDays className="w-5 h-5 stroke-[2]" />
+          <span className="text-[10px] mt-1 font-semibold">Agenda</span>
+        </button>
+      </nav>
+
+      {/* Desktop Sidebar Sidebar Navigation (visible on large viewports) */}
+      <div className="hidden md:flex fixed left-6 top-1/2 -translate-y-1/2 flex-col gap-4 bg-surface/90 backdrop-blur-md p-3 rounded-2xl border border-outline-variant shadow-lg z-40">
+        <button
+          onClick={() => setActiveTab("dashboard")}
+          className={`p-3 rounded-xl transition-all tooltip cursor-pointer ${
+            activeTab === "dashboard" ? "bg-primary text-on-primary" : "text-on-surface-variant hover:bg-surface-container"
+          }`}
+          title="Dashboard"
+        >
+          <LayoutDashboard className="w-5 h-5" />
+        </button>
+        <button
+          onClick={() => setActiveTab("properties")}
+          className={`p-3 rounded-xl transition-all tooltip cursor-pointer ${
+            activeTab === "properties" ? "bg-primary text-on-primary" : "text-on-surface-variant hover:bg-surface-container"
+          }`}
+          title="Imóveis"
+        >
+          <Home className="w-5 h-5" />
+        </button>
+        <button
+          onClick={() => setActiveTab("clients")}
+          className={`p-3 rounded-xl transition-all tooltip cursor-pointer ${
+            activeTab === "clients" ? "bg-primary text-on-primary" : "text-on-surface-variant hover:bg-surface-container"
+          }`}
+          title="Clientes"
+        >
+          <Users className="w-5 h-5" />
+        </button>
+        <button
+          onClick={() => setActiveTab("pipeline")}
+          className={`p-3 rounded-xl transition-all tooltip cursor-pointer ${
+            activeTab === "pipeline" ? "bg-primary text-on-primary" : "text-on-surface-variant hover:bg-surface-container"
+          }`}
+          title="Esteira de Vendas"
+        >
+          <FolderSync className="w-5 h-5" />
+        </button>
+        <button
+          onClick={() => setActiveTab("tasks")}
+          className={`p-3 rounded-xl transition-all tooltip cursor-pointer ${
+            activeTab === "tasks" ? "bg-primary text-on-primary" : "text-on-surface-variant hover:bg-surface-container"
+          }`}
+          title="Agenda de Tarefas"
+        >
+          <CalendarDays className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* Property Details Modal */}
+      <AnimatePresence>
+        {selectedProperty && (
+          <PropertyModal
+            property={selectedProperty}
+            clients={clients}
+            onClose={() => setSelectedProperty(null)}
+            onUpdate={handleUpdateProperty}
+            onDelete={handleDeleteProperty}
+            geminiActive={!!dbStatus?.geminiActive}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Client Details Modal */}
+      <AnimatePresence>
+        {selectedClient && (
+          <ClientModal
+            client={selectedClient}
+            onClose={() => setSelectedClient(null)}
+            onUpdate={handleUpdateClient}
+            onDelete={handleDeleteClient}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* User Profile Modal */}
+      <AnimatePresence>
+        {showProfileModal && (
+          <UserProfileModal
+            user={currentUser}
+            onClose={() => setShowProfileModal(false)}
+            onUpdateSuccess={(updatedUser) => {
+              localStorage.setItem("vega_crm_user", JSON.stringify(updatedUser));
+              setCurrentUser(updatedUser);
+            }}
+            onLogout={() => {
+              localStorage.removeItem("vega_crm_user");
+              setCurrentUser(null);
+              setShowProfileModal(false);
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+    </div>
+  );
+}
