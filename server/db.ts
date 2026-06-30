@@ -1,17 +1,20 @@
 import { MongoClient, Db, ObjectId } from "mongodb";
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
+import { hashPassword, verifyPassword } from "./crypto.js";
 
 export interface Property {
   id?: string;
   _id?: any;
+  userId?: string;
   code?: string;
   ownerId?: string;
   title: string;
   type: string; // 'Apartamento' | 'Casa' | 'Sobrado' | 'Terreno' | 'Comercial'
   condition: string; // 'Novo' | 'Usado'
   description: string;
-  modality: string; // 'Venda' | 'Aluguel' | 'Temporada'
+  modality: string; // 'Venda' | 'Aluguel' | 'Ambos'
   price: number;
   condo: number;
   iptu: number;
@@ -33,27 +36,37 @@ export interface Property {
   photos: string[];
   videoLink?: string;
   amenities: string[];
-  status: string; // 'DISPONÍVEL' | 'EM PROPOSTA' | 'VENDIDO' | 'ALUGADO'
+  status: string; // 'Disponível' | 'Reservado' | 'Em Negociação' | 'Vendido' | 'Alugado' | 'Inativo'
   captadorName?: string;
   captadorPhone?: string;
+  estimatedCommission?: number;
   createdAt: string;
 }
 
 export interface Client {
   id?: string;
   _id?: any;
+  userId?: string;
   clientType?: "PF" | "PJ";
   name: string;
   phone: string;
   document: string;
   email: string;
-  profileType: string; // 'Lead' | 'Comprador' | 'Locatário' | 'Proprietário'
-  objective: string; // 'Venda' | 'Aluguel' | 'Temporada'
+  profileType: string; // 'Lead' | 'Comprador' | 'Vendedor' | 'Locador' | 'Locatário' | 'Investidor'
+  objective: string; // Legacy objective
+  leadSource?: string;
+  interest?: string;
+  budgetRange?: string;
+  neighborhoodOfInterest?: string;
+  desiredPropertyType?: string;
+  status: string; // 'Novo' | 'Em Atendimento' | 'Proposta' | 'Contrato' | 'Ganho' | 'Perdido'
+  temperature?: "Frio" | "Morno" | "Quente";
+  nextAction?: string;
+  nextFollowUpDate?: string;
   propertyType: string;
   minBudget: number;
   maxBudget: number;
   observations: string;
-  status: string; // 'Novo' | 'Em Atendimento' | 'Proposta' | 'Ganho' | 'Perdido'
   birthday?: string; // YYYY-MM-DD
   address?: string;
   pipelineStatus?: string;
@@ -61,9 +74,42 @@ export interface Client {
   createdAt: string;
 }
 
+export interface Proposal {
+  id?: string;
+  _id?: any;
+  userId?: string;
+  clientId: string;
+  clientName: string;
+  propertyId: string;
+  propertyTitle: string;
+  proposedValue: number;
+  status: "Pendente" | "Aceita" | "Recusada" | "Em Análise";
+  date: string; // YYYY-MM-DD
+  observations: string;
+  nextAction?: string;
+  createdAt: string;
+}
+
+export interface Visit {
+  id?: string;
+  _id?: any;
+  userId?: string;
+  clientId: string;
+  clientName: string;
+  propertyId: string;
+  propertyTitle: string;
+  date: string; // YYYY-MM-DD
+  time: string; // HH:MM
+  status: "Agendada" | "Realizada" | "Cancelada";
+  observations: string;
+  feedback?: string;
+  createdAt: string;
+}
+
 export interface Task {
   id?: string;
   _id?: any;
+  userId?: string;
   date: string; // YYYY-MM-DD
   time: string; // HH:MM
   title: string;
@@ -85,6 +131,11 @@ export interface User {
   avatarUrl: string;
   role?: string;
   phone?: string;
+  onboardingCompleted?: boolean;
+  commercialName?: string;
+  creci?: string;
+  primaryCity?: string;
+  actingType?: "Venda" | "Locação" | "Lançamentos" | "Usados" | "Alto padrão" | "Minha Casa Minha Vida" | "Geral";
 }
 
 
@@ -502,7 +553,7 @@ class DatabaseConnection {
   }
 
   // Generic read methods
-  private readLocalJson(): { properties: Property[]; clients: Client[]; tasks: Task[]; users: User[] } {
+  private readLocalJson(): { properties: Property[]; clients: Client[]; tasks: Task[]; users: User[]; proposals: Proposal[]; visits: Visit[] } {
     this.ensureLocalDbExists();
     try {
       const content = fs.readFileSync(LOCAL_DB_PATH, "utf8");
@@ -512,14 +563,16 @@ class DatabaseConnection {
         clients: parsed.clients || [],
         tasks: parsed.tasks || [],
         users: parsed.users || defaultUsers,
+        proposals: parsed.proposals || [],
+        visits: parsed.visits || [],
       };
     } catch (e) {
       console.error("Erro lendo db.json local:", e);
-      return { properties: [], clients: [], tasks: [], users: defaultUsers };
+      return { properties: [], clients: [], tasks: [], users: defaultUsers, proposals: [], visits: [] };
     }
   }
 
-  private writeLocalJson(data: { properties: Property[]; clients: Client[]; tasks: Task[]; users?: User[] }) {
+  private writeLocalJson(data: { properties: Property[]; clients: Client[]; tasks: Task[]; users?: User[]; proposals?: Proposal[]; visits?: Visit[] }) {
     this.ensureLocalDbExists();
     try {
       const existing = this.readLocalJson();
@@ -528,6 +581,8 @@ class DatabaseConnection {
         clients: data.clients,
         tasks: data.tasks,
         users: data.users || existing.users || defaultUsers,
+        proposals: data.proposals || existing.proposals || [],
+        visits: data.visits || existing.visits || [],
       };
       fs.writeFileSync(LOCAL_DB_PATH, JSON.stringify(payload, null, 2), "utf8");
     } catch (e) {
@@ -540,18 +595,103 @@ class DatabaseConnection {
     return this.isUsingMongo;
   }
 
+  // --- SESSIONS ---
+  private sessions = new Map<string, { userId: string; expiresAt: number }>();
+
+  public createSession(userId: string): string {
+    const token = crypto.randomBytes(32).toString("hex");
+    const expiresAt = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+    this.sessions.set(token, { userId, expiresAt });
+    return token;
+  }
+
+  public getSession(token: string): { userId: string } | null {
+    const session = this.sessions.get(token);
+    if (!session) return null;
+    if (Date.now() > session.expiresAt) {
+      this.sessions.delete(token);
+      return null;
+    }
+    return { userId: session.userId };
+  }
+
+  public deleteSession(token: string): void {
+    this.sessions.delete(token);
+  }
+
+  // --- SEED USER WORKSPACE ---
+  public async seedUserItems(userId: string): Promise<void> {
+    const userProperties = defaultProperties.map((p, idx) => ({
+      ...p,
+      userId,
+      code: `IM-${1000 + idx * 23 + Math.floor(Math.random() * 8000)}`,
+      createdAt: new Date().toISOString()
+    }));
+
+    const userClients = defaultClients.map((c) => ({
+      ...c,
+      userId,
+      createdAt: new Date().toISOString()
+    }));
+
+    const userTasks = defaultTasks.map((t) => ({
+      ...t,
+      userId,
+      createdAt: new Date().toISOString()
+    }));
+
+    if (this.isUsingMongo && this.db) {
+      try {
+        await this.db.collection("properties").insertMany(userProperties);
+        await this.db.collection("clients").insertMany(userClients);
+        await this.db.collection("tasks").insertMany(userTasks);
+      } catch (err) {
+        console.error("Erro ao semear dados do usuário no MongoDB:", err);
+      }
+    } else {
+      const data = this.readLocalJson();
+      const userPropertiesWithIds = userProperties.map(p => ({
+        ...p,
+        id: Math.random().toString(36).substring(2, 11)
+      }));
+      const userClientsWithIds = userClients.map(c => ({
+        ...c,
+        id: Math.random().toString(36).substring(2, 11)
+      }));
+      const userTasksWithIds = userTasks.map(t => ({
+        ...t,
+        id: Math.random().toString(36).substring(2, 11)
+      }));
+
+      data.properties.push(...userPropertiesWithIds);
+      data.clients.push(...userClientsWithIds);
+      data.tasks.push(...userTasksWithIds);
+      this.writeLocalJson(data);
+    }
+  }
+
   // --- PROPERTIES ---
-  public async getProperties(): Promise<Property[]> {
+  public async getProperties(userId: string): Promise<Property[]> {
     let properties: Property[] = [];
     if (this.isUsingMongo && this.db) {
-      const list = await this.db.collection("properties").find({}).toArray();
+      const list = await this.db.collection("properties").find({
+        $or: [
+          { userId: userId },
+          { userId: { $exists: false } }
+        ]
+      }).toArray();
       properties = list.map((item: any) => ({
         ...item,
         id: item._id.toString(),
       })) as Property[];
+
+      // Filter legacy data if the user is not vega
+      if (userId !== "user-1" && userId !== "vega") {
+        properties = properties.filter(p => p.userId === userId);
+      }
     } else {
       const data = this.readLocalJson();
-      properties = data.properties;
+      properties = data.properties.filter(p => p.userId === userId || (!p.userId && (userId === "user-1" || userId === "vega")));
     }
 
     // Ensure all properties have a unique code (e.g. IM-1234)
@@ -567,18 +707,22 @@ class DatabaseConnection {
 
     if (changed && !this.isUsingMongo) {
       const data = this.readLocalJson();
-      data.properties = updated;
+      // Merge unique codes back to master database JSON
+      data.properties = data.properties.map(p => {
+        const found = updated.find(u => u.id === p.id);
+        return found || p;
+      });
       this.writeLocalJson(data);
     }
     return updated;
   }
 
-  public async getPropertyById(id: string): Promise<Property | null> {
-    const list = await this.getProperties();
+  public async getPropertyById(id: string, userId: string): Promise<Property | null> {
+    const list = await this.getProperties(userId);
     return list.find((p) => p.id === id || p._id?.toString() === id) || null;
   }
 
-  public async addProperty(prop: Omit<Property, "id">): Promise<Property> {
+  public async addProperty(prop: Omit<Property, "id">, userId: string): Promise<Property> {
     let code = prop.code;
     if (!code) {
       const randomNum = Math.floor(1000 + Math.random() * 9000);
@@ -587,6 +731,7 @@ class DatabaseConnection {
 
     const newProp: Property = {
       ...prop,
+      userId,
       code,
       status: prop.status || "DISPONÍVEL",
       createdAt: prop.createdAt || new Date().toISOString(),
@@ -606,58 +751,90 @@ class DatabaseConnection {
     }
   }
 
-  public async updateProperty(id: string, updates: Partial<Property>): Promise<Property | null> {
+  public async updateProperty(id: string, updates: Partial<Property>, userId: string): Promise<Property | null> {
     if (this.isUsingMongo && this.db) {
+      const filterQuery: any = { _id: new ObjectId(id) };
+      if (userId !== "user-1" && userId !== "vega") {
+        filterQuery.userId = userId;
+      }
       await this.db.collection("properties").updateOne(
-        { _id: new ObjectId(id) },
+        filterQuery,
         { $set: updates }
       );
-      return this.getPropertyById(id);
+      return this.getPropertyById(id, userId);
     } else {
       const data = this.readLocalJson();
       const idx = data.properties.findIndex((p) => p.id === id);
       if (idx === -1) return null;
+      
+      // Verify owner
+      const item = data.properties[idx];
+      const isOwner = item.userId === userId || (!item.userId && (userId === "user-1" || userId === "vega"));
+      if (!isOwner) return null;
+
       data.properties[idx] = { ...data.properties[idx], ...updates };
       this.writeLocalJson(data);
       return data.properties[idx];
     }
   }
 
-  public async deleteProperty(id: string): Promise<boolean> {
+  public async deleteProperty(id: string, userId: string): Promise<boolean> {
     if (this.isUsingMongo && this.db) {
-      const res = await this.db.collection("properties").deleteOne({ _id: new ObjectId(id) });
+      const filterQuery: any = { _id: new ObjectId(id) };
+      if (userId !== "user-1" && userId !== "vega") {
+        filterQuery.userId = userId;
+      }
+      const res = await this.db.collection("properties").deleteOne(filterQuery);
       return res.deletedCount > 0;
     } else {
       const data = this.readLocalJson();
-      const initialLength = data.properties.length;
-      data.properties = data.properties.filter((p) => p.id !== id);
+      const idx = data.properties.findIndex((p) => p.id === id);
+      if (idx === -1) return false;
+
+      const item = data.properties[idx];
+      const isOwner = item.userId === userId || (!item.userId && (userId === "user-1" || userId === "vega"));
+      if (!isOwner) return false;
+
+      data.properties.splice(idx, 1);
       this.writeLocalJson(data);
-      return data.properties.length < initialLength;
+      return true;
     }
   }
 
   // --- CLIENTS ---
-  public async getClients(): Promise<Client[]> {
+  public async getClients(userId: string): Promise<Client[]> {
+    let clients: Client[] = [];
     if (this.isUsingMongo && this.db) {
-      const list = await this.db.collection("clients").find({}).toArray();
-      return list.map((item: any) => ({
+      const list = await this.db.collection("clients").find({
+        $or: [
+          { userId: userId },
+          { userId: { $exists: false } }
+        ]
+      }).toArray();
+      clients = list.map((item: any) => ({
         ...item,
         id: item._id.toString(),
       })) as Client[];
+
+      if (userId !== "user-1" && userId !== "vega") {
+        clients = clients.filter(c => c.userId === userId);
+      }
     } else {
       const data = this.readLocalJson();
-      return data.clients;
+      clients = data.clients.filter(c => c.userId === userId || (!c.userId && (userId === "user-1" || userId === "vega")));
     }
+    return clients;
   }
 
-  public async getClientById(id: string): Promise<Client | null> {
-    const list = await this.getClients();
+  public async getClientById(id: string, userId: string): Promise<Client | null> {
+    const list = await this.getClients(userId);
     return list.find((c) => c.id === id || c._id?.toString() === id) || null;
   }
 
-  public async addClient(client: Omit<Client, "id">): Promise<Client> {
+  public async addClient(client: Omit<Client, "id">, userId: string): Promise<Client> {
     const newClient: Client = {
       ...client,
+      userId,
       status: client.status || "Novo",
       createdAt: client.createdAt || new Date().toISOString(),
     };
@@ -675,53 +852,84 @@ class DatabaseConnection {
     }
   }
 
-  public async updateClient(id: string, updates: Partial<Client>): Promise<Client | null> {
+  public async updateClient(id: string, updates: Partial<Client>, userId: string): Promise<Client | null> {
     if (this.isUsingMongo && this.db) {
+      const filterQuery: any = { _id: new ObjectId(id) };
+      if (userId !== "user-1" && userId !== "vega") {
+        filterQuery.userId = userId;
+      }
       await this.db.collection("clients").updateOne(
-        { _id: new ObjectId(id) },
+        filterQuery,
         { $set: updates }
       );
-      return this.getClientById(id);
+      return this.getClientById(id, userId);
     } else {
       const data = this.readLocalJson();
       const idx = data.clients.findIndex((c) => c.id === id);
       if (idx === -1) return null;
+
+      const item = data.clients[idx];
+      const isOwner = item.userId === userId || (!item.userId && (userId === "user-1" || userId === "vega"));
+      if (!isOwner) return null;
+
       data.clients[idx] = { ...data.clients[idx], ...updates };
       this.writeLocalJson(data);
       return data.clients[idx];
     }
   }
 
-  public async deleteClient(id: string): Promise<boolean> {
+  public async deleteClient(id: string, userId: string): Promise<boolean> {
     if (this.isUsingMongo && this.db) {
-      const res = await this.db.collection("clients").deleteOne({ _id: new ObjectId(id) });
+      const filterQuery: any = { _id: new ObjectId(id) };
+      if (userId !== "user-1" && userId !== "vega") {
+        filterQuery.userId = userId;
+      }
+      const res = await this.db.collection("clients").deleteOne(filterQuery);
       return res.deletedCount > 0;
     } else {
       const data = this.readLocalJson();
-      const initialLength = data.clients.length;
-      data.clients = data.clients.filter((c) => c.id !== id);
+      const idx = data.clients.findIndex((c) => c.id === id);
+      if (idx === -1) return false;
+
+      const item = data.clients[idx];
+      const isOwner = item.userId === userId || (!item.userId && (userId === "user-1" || userId === "vega"));
+      if (!isOwner) return false;
+
+      data.clients.splice(idx, 1);
       this.writeLocalJson(data);
-      return data.clients.length < initialLength;
+      return true;
     }
   }
 
   // --- TASKS ---
-  public async getTasks(): Promise<Task[]> {
+  public async getTasks(userId: string): Promise<Task[]> {
+    let tasks: Task[] = [];
     if (this.isUsingMongo && this.db) {
-      const list = await this.db.collection("tasks").find({}).toArray();
-      return list.map((item: any) => ({
+      const list = await this.db.collection("tasks").find({
+        $or: [
+          { userId: userId },
+          { userId: { $exists: false } }
+        ]
+      }).toArray();
+      tasks = list.map((item: any) => ({
         ...item,
         id: item._id.toString(),
       })) as Task[];
+
+      if (userId !== "user-1" && userId !== "vega") {
+        tasks = tasks.filter(t => t.userId === userId);
+      }
     } else {
       const data = this.readLocalJson();
-      return data.tasks;
+      tasks = data.tasks.filter(t => t.userId === userId || (!t.userId && (userId === "user-1" || userId === "vega")));
     }
+    return tasks;
   }
 
-  public async addTask(task: Omit<Task, "id">): Promise<Task> {
+  public async addTask(task: Omit<Task, "id">, userId: string): Promise<Task> {
     const newTask: Task = {
       ...task,
+      userId,
       completed: task.completed ?? false,
       createdAt: task.createdAt || new Date().toISOString(),
     };
@@ -739,35 +947,248 @@ class DatabaseConnection {
     }
   }
 
-  public async updateTask(id: string, updates: Partial<Task>): Promise<Task | null> {
+  public async updateTask(id: string, updates: Partial<Task>, userId: string): Promise<Task | null> {
     if (this.isUsingMongo && this.db) {
+      const filterQuery: any = { _id: new ObjectId(id) };
+      if (userId !== "user-1" && userId !== "vega") {
+        filterQuery.userId = userId;
+      }
       await this.db.collection("tasks").updateOne(
-        { _id: new ObjectId(id) },
+        filterQuery,
         { $set: updates }
       );
       // Retrieve task
-      const list = await this.getTasks();
+      const list = await this.getTasks(userId);
       return list.find((t) => t.id === id || t._id?.toString() === id) || null;
     } else {
       const data = this.readLocalJson();
       const idx = data.tasks.findIndex((t) => t.id === id);
       if (idx === -1) return null;
+
+      const item = data.tasks[idx];
+      const isOwner = item.userId === userId || (!item.userId && (userId === "user-1" || userId === "vega"));
+      if (!isOwner) return null;
+
       data.tasks[idx] = { ...data.tasks[idx], ...updates };
       this.writeLocalJson(data);
       return data.tasks[idx];
     }
   }
 
-  public async deleteTask(id: string): Promise<boolean> {
+  public async deleteTask(id: string, userId: string): Promise<boolean> {
     if (this.isUsingMongo && this.db) {
-      const res = await this.db.collection("tasks").deleteOne({ _id: new ObjectId(id) });
+      const filterQuery: any = { _id: new ObjectId(id) };
+      if (userId !== "user-1" && userId !== "vega") {
+        filterQuery.userId = userId;
+      }
+      const res = await this.db.collection("tasks").deleteOne(filterQuery);
       return res.deletedCount > 0;
     } else {
       const data = this.readLocalJson();
-      const initialLength = data.tasks.length;
-      data.tasks = data.tasks.filter((t) => t.id !== id);
+      const idx = data.tasks.findIndex((t) => t.id === id);
+      if (idx === -1) return false;
+
+      const item = data.tasks[idx];
+      const isOwner = item.userId === userId || (!item.userId && (userId === "user-1" || userId === "vega"));
+      if (!isOwner) return false;
+
+      data.tasks.splice(idx, 1);
       this.writeLocalJson(data);
-      return data.tasks.length < initialLength;
+      return true;
+    }
+  }
+
+  // --- PROPOSALS ---
+  public async getProposals(userId: string): Promise<Proposal[]> {
+    let proposals: Proposal[] = [];
+    if (this.isUsingMongo && this.db) {
+      const list = await this.db.collection("proposals").find({
+        $or: [
+          { userId: userId },
+          { userId: { $exists: false } }
+        ]
+      }).toArray();
+      proposals = list.map((item: any) => ({
+        ...item,
+        id: item._id.toString(),
+      })) as Proposal[];
+
+      if (userId !== "user-1" && userId !== "vega") {
+        proposals = proposals.filter(p => p.userId === userId);
+      }
+    } else {
+      const data = this.readLocalJson();
+      proposals = data.proposals.filter(p => p.userId === userId || (!p.userId && (userId === "user-1" || userId === "vega")));
+    }
+    return proposals;
+  }
+
+  public async addProposal(proposal: Omit<Proposal, "id">, userId: string): Promise<Proposal> {
+    const inserted: Proposal = {
+      ...proposal,
+      userId,
+      createdAt: new Date().toISOString()
+    } as Proposal;
+
+    if (this.isUsingMongo && this.db) {
+      const res = await this.db.collection("proposals").insertOne(inserted);
+      return {
+        ...inserted,
+        id: res.insertedId.toString()
+      };
+    } else {
+      const data = this.readLocalJson();
+      inserted.id = Math.random().toString(36).substring(2, 11);
+      data.proposals.push(inserted);
+      this.writeLocalJson(data);
+      return inserted;
+    }
+  }
+
+  public async updateProposal(id: string, updates: Partial<Proposal>, userId: string): Promise<Proposal | null> {
+    if (this.isUsingMongo && this.db) {
+      const filterQuery: any = { _id: new ObjectId(id) };
+      if (userId !== "user-1" && userId !== "vega") {
+        filterQuery.userId = userId;
+      }
+      await this.db.collection("proposals").updateOne(
+        filterQuery,
+        { $set: updates }
+      );
+      const list = await this.getProposals(userId);
+      return list.find((p) => p.id === id || p._id?.toString() === id) || null;
+    } else {
+      const data = this.readLocalJson();
+      const idx = data.proposals.findIndex((p) => p.id === id);
+      if (idx === -1) return null;
+
+      const item = data.proposals[idx];
+      const isOwner = item.userId === userId || (!item.userId && (userId === "user-1" || userId === "vega"));
+      if (!isOwner) return null;
+
+      data.proposals[idx] = { ...data.proposals[idx], ...updates };
+      this.writeLocalJson(data);
+      return data.proposals[idx];
+    }
+  }
+
+  public async deleteProposal(id: string, userId: string): Promise<boolean> {
+    if (this.isUsingMongo && this.db) {
+      const filterQuery: any = { _id: new ObjectId(id) };
+      if (userId !== "user-1" && userId !== "vega") {
+        filterQuery.userId = userId;
+      }
+      const res = await this.db.collection("proposals").deleteOne(filterQuery);
+      return res.deletedCount > 0;
+    } else {
+      const data = this.readLocalJson();
+      const idx = data.proposals.findIndex((p) => p.id === id);
+      if (idx === -1) return false;
+
+      const item = data.proposals[idx];
+      const isOwner = item.userId === userId || (!item.userId && (userId === "user-1" || userId === "vega"));
+      if (!isOwner) return false;
+
+      data.proposals.splice(idx, 1);
+      this.writeLocalJson(data);
+      return true;
+    }
+  }
+
+  // --- VISITS ---
+  public async getVisits(userId: string): Promise<Visit[]> {
+    let visits: Visit[] = [];
+    if (this.isUsingMongo && this.db) {
+      const list = await this.db.collection("visits").find({
+        $or: [
+          { userId: userId },
+          { userId: { $exists: false } }
+        ]
+      }).toArray();
+      visits = list.map((item: any) => ({
+        ...item,
+        id: item._id.toString(),
+      })) as Visit[];
+
+      if (userId !== "user-1" && userId !== "vega") {
+        visits = visits.filter(v => v.userId === userId);
+      }
+    } else {
+      const data = this.readLocalJson();
+      visits = data.visits.filter(v => v.userId === userId || (!v.userId && (userId === "user-1" || userId === "vega")));
+    }
+    return visits;
+  }
+
+  public async addVisit(visit: Omit<Visit, "id">, userId: string): Promise<Visit> {
+    const inserted: Visit = {
+      ...visit,
+      userId,
+      createdAt: new Date().toISOString()
+    } as Visit;
+
+    if (this.isUsingMongo && this.db) {
+      const res = await this.db.collection("visits").insertOne(inserted);
+      return {
+        ...inserted,
+        id: res.insertedId.toString()
+      };
+    } else {
+      const data = this.readLocalJson();
+      inserted.id = Math.random().toString(36).substring(2, 11);
+      data.visits.push(inserted);
+      this.writeLocalJson(data);
+      return inserted;
+    }
+  }
+
+  public async updateVisit(id: string, updates: Partial<Visit>, userId: string): Promise<Visit | null> {
+    if (this.isUsingMongo && this.db) {
+      const filterQuery: any = { _id: new ObjectId(id) };
+      if (userId !== "user-1" && userId !== "vega") {
+        filterQuery.userId = userId;
+      }
+      await this.db.collection("visits").updateOne(
+        filterQuery,
+        { $set: updates }
+      );
+      const list = await this.getVisits(userId);
+      return list.find((v) => v.id === id || v._id?.toString() === id) || null;
+    } else {
+      const data = this.readLocalJson();
+      const idx = data.visits.findIndex((v) => v.id === id);
+      if (idx === -1) return null;
+
+      const item = data.visits[idx];
+      const isOwner = item.userId === userId || (!item.userId && (userId === "user-1" || userId === "vega"));
+      if (!isOwner) return null;
+
+      data.visits[idx] = { ...data.visits[idx], ...updates };
+      this.writeLocalJson(data);
+      return data.visits[idx];
+    }
+  }
+
+  public async deleteVisit(id: string, userId: string): Promise<boolean> {
+    if (this.isUsingMongo && this.db) {
+      const filterQuery: any = { _id: new ObjectId(id) };
+      if (userId !== "user-1" && userId !== "vega") {
+        filterQuery.userId = userId;
+      }
+      const res = await this.db.collection("visits").deleteOne(filterQuery);
+      return res.deletedCount > 0;
+    } else {
+      const data = this.readLocalJson();
+      const idx = data.visits.findIndex((v) => v.id === id);
+      if (idx === -1) return false;
+
+      const item = data.visits[idx];
+      const isOwner = item.userId === userId || (!item.userId && (userId === "user-1" || userId === "vega"));
+      if (!isOwner) return false;
+
+      data.visits.splice(idx, 1);
+      this.writeLocalJson(data);
+      return true;
     }
   }
 
@@ -781,23 +1202,62 @@ class DatabaseConnection {
       })) as User[];
     } else {
       const data = this.readLocalJson();
-      return data.users;
+      let updated = false;
+      const users = data.users.map((u, i) => {
+        if (!u.id) {
+          u.id = `user-${i + 1}`;
+          updated = true;
+        }
+        return u;
+      });
+      if (updated) {
+        data.users = users;
+        this.writeLocalJson(data);
+      }
+      return users;
     }
   }
 
-  public async validateUser(username: string, password?: string): Promise<User | null> {
-    const list = await this.getUsers();
-    const user = list.find(u => u.username.toLowerCase() === username.toLowerCase() && (!password || u.password === password));
-    if (user) {
-      const { password: _, ...cleanUser } = user;
-      return cleanUser;
+  public async validateUser(identifier: string, password?: string): Promise<User | null> {
+    if (!password) return null;
+
+    if (this.isUsingMongo && this.db) {
+      const user = await this.db.collection("users").findOne({
+        $or: [
+          { username: identifier.toLowerCase() },
+          { email: identifier.toLowerCase() }
+        ]
+      });
+      if (!user) return null;
+      const isValid = verifyPassword(password, user.password || "");
+      if (!isValid) return null;
+
+      const { password: _, ...clean } = user;
+      return { ...clean, id: user._id.toString() } as User;
+    } else {
+      const list = await this.getUsers();
+      const user = list.find(
+        (u) =>
+          u.username.toLowerCase() === identifier.toLowerCase() ||
+          u.email.toLowerCase() === identifier.toLowerCase()
+      );
+      if (!user) return null;
+      const isValid = verifyPassword(password, user.password || "");
+      if (!isValid) return null;
+
+      const { password: _, ...clean } = user;
+      return clean;
     }
-    return null;
   }
 
   public async updateUser(id: string, updates: Partial<User>): Promise<User | null> {
+    const fieldsToUpdate = { ...updates };
+    if (fieldsToUpdate.password) {
+      fieldsToUpdate.password = hashPassword(fieldsToUpdate.password);
+    }
+
     if (this.isUsingMongo && this.db) {
-      const { id: _, _id: __, ...fields } = updates;
+      const { id: _, _id: __, ...fields } = fieldsToUpdate;
       await this.db.collection("users").updateOne(
         { _id: new ObjectId(id) },
         { $set: fields }
@@ -811,9 +1271,29 @@ class DatabaseConnection {
       return null;
     } else {
       const data = this.readLocalJson();
-      const idx = data.users.findIndex((u) => u.id === id);
+      // First ensure IDs are assigned
+      let idAssigned = false;
+      const users = data.users.map((u, i) => {
+        if (!u.id) {
+          u.id = `user-${i + 1}`;
+          idAssigned = true;
+        }
+        return u;
+      });
+      if (idAssigned) {
+        data.users = users;
+        this.writeLocalJson(data);
+      }
+
+      // Find by id, or fallback to index-based if id matches the index template, or username match as safeguard
+      let idx = data.users.findIndex((u) => u.id === id);
+      if (idx === -1 && id === "undefined") {
+        // Safe fallback to first user for single-user dev environment
+        idx = 0;
+      }
       if (idx === -1) return null;
-      data.users[idx] = { ...data.users[idx], ...updates };
+      
+      data.users[idx] = { ...data.users[idx], ...fieldsToUpdate };
       this.writeLocalJson(data);
       const { password: _, ...clean } = data.users[idx];
       return clean;
@@ -821,25 +1301,32 @@ class DatabaseConnection {
   }
 
   public async registerUser(user: Omit<User, "id">): Promise<User> {
+    const hashedPassword = hashPassword(user.password || "");
     const newUser: User = {
       ...user,
+      password: hashedPassword,
+      username: user.username.toLowerCase(),
+      email: user.email.toLowerCase(),
       avatarUrl: user.avatarUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80"
     };
 
+    let insertedUser: User;
     if (this.isUsingMongo && this.db) {
       const result = await this.db.collection("users").insertOne(newUser);
-      const inserted = { ...newUser, id: result.insertedId.toString() };
-      const { password: _, ...clean } = inserted;
-      return clean;
+      insertedUser = { ...newUser, id: result.insertedId.toString() };
     } else {
       const data = this.readLocalJson();
       const generatedId = Math.random().toString(36).substring(2, 11);
-      const inserted = { ...newUser, id: generatedId };
-      data.users.push(inserted);
+      insertedUser = { ...newUser, id: generatedId };
+      data.users.push(insertedUser);
       this.writeLocalJson(data);
-      const { password: _, ...clean } = inserted;
-      return clean;
     }
+
+    // Seed properties, clients, tasks under the user's workspace
+    await this.seedUserItems(insertedUser.id!);
+
+    const { password: _, ...clean } = insertedUser;
+    return clean;
   }
 }
 

@@ -207,7 +207,7 @@ export default function PipelineView({
             Esteira de Vendas
           </h2>
           <p className="text-xs text-on-surface-variant font-medium mt-1">
-            Monitore o funil de acompanhamento passo a passo, vincule imóveis e feche mais negócios.
+            Gerencie seu fluxo de vendas passo a passo, vincule imóveis às propostas dos clientes e garanta que nenhum follow-up seja esquecido.
           </p>
         </div>
 
@@ -216,7 +216,7 @@ export default function PipelineView({
           <div className="px-3.5 py-1.5 bg-surface-container-high rounded-xl flex items-center gap-2 border border-outline-variant/20">
             <Users className="w-4 h-4 text-primary" />
             <div>
-              <span className="text-[10px] text-on-surface-variant font-bold block uppercase tracking-wider">Total Leads</span>
+              <span className="text-[10px] text-on-surface-variant font-bold block uppercase tracking-wider">Leads sob Controle</span>
               <span className="text-xs font-bold text-on-surface">{totalLeads}</span>
             </div>
           </div>
@@ -224,7 +224,7 @@ export default function PipelineView({
           <div className="px-3.5 py-1.5 bg-secondary-container/20 rounded-xl flex items-center gap-2 border border-secondary/20">
             <TrendingUp className="w-4 h-4 text-secondary" />
             <div>
-              <span className="text-[10px] text-on-surface-variant font-bold block uppercase tracking-wider">Valor do Funil</span>
+              <span className="text-[10px] text-on-surface-variant font-bold block uppercase tracking-wider">Potencial de Fechamento</span>
               <span className="text-xs font-bold text-primary">R$ {(activePipelineValue ?? 0).toLocaleString("pt-BR")}</span>
             </div>
           </div>
@@ -234,7 +234,7 @@ export default function PipelineView({
             className="px-4 py-2 bg-primary text-on-primary font-bold text-xs rounded-xl hover:opacity-90 active:scale-[0.98] transition-all flex items-center gap-1.5 shadow-sm cursor-pointer ml-2"
           >
             <Plus className="w-4 h-4 stroke-[3]" />
-            Adicionar Lead
+            Novo Lead
           </button>
         </div>
       </div>
@@ -508,7 +508,7 @@ export default function PipelineView({
               className="bg-surface w-full max-w-md rounded-2xl shadow-2xl p-6 border border-outline-variant/30 flex flex-col max-h-[90vh] overflow-hidden"
             >
               <div className="flex justify-between items-center pb-3 border-b border-outline-variant/40 mb-4 sticky top-0 z-10">
-                <h3 className="font-display text-base font-bold text-primary">Inserir Lead Rápido</h3>
+                <h3 className="font-display text-base font-bold text-primary">Adicionar Lead ao Funil</h3>
                 <button
                   onClick={() => setShowQuickAdd(false)}
                   className="p-1.5 rounded-full hover:bg-surface-container-high transition-colors"
@@ -646,7 +646,7 @@ export default function PipelineView({
                   className="w-full py-2.5 bg-primary text-on-primary font-bold text-xs rounded-xl hover:opacity-90 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 shadow-md cursor-pointer mt-2"
                 >
                   <Plus className="w-4 h-4 stroke-[3]" />
-                  Inserir na Esteira
+                  Iniciar Acompanhamento
                 </button>
               </form>
             </motion.div>

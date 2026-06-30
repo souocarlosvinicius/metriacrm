@@ -112,8 +112,8 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
             <Home className="w-6 h-6 text-secondary-fixed animate-pulse" />
           </div>
           <h1 className="font-display text-3xl font-black text-primary tracking-tight">Metria CRM</h1>
-          <p className="text-xs text-on-surface-variant font-medium tracking-wide mt-1 uppercase">
-            Sua imobiliária no próximo nível
+          <p className="text-xs text-on-surface-variant font-medium text-center mt-2.5 px-3 leading-relaxed">
+            O CRM imobiliário feito para o corretor não perder leads, visitas, propostas e follow-ups.
           </p>
         </div>
 

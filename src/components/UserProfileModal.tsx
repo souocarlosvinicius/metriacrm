@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { motion } from "motion/react";
-import { X, User as UserIcon, Mail, Phone, Briefcase, Image as ImageIcon, Lock, Save, LogOut, Loader2, Check } from "lucide-react";
+import { X, User as UserIcon, Mail, Phone, Briefcase, Image as ImageIcon, Lock, Save, LogOut, Loader2, Check, Sparkles } from "lucide-react";
 import { User } from "../types";
 
 interface UserProfileModalProps {
@@ -17,6 +17,12 @@ export default function UserProfileModal({ user, onClose, onUpdateSuccess, onLog
   const [role, setRole] = useState(user.role || "");
   const [avatarUrl, setAvatarUrl] = useState(user.avatarUrl || "");
   const [password, setPassword] = useState("");
+  
+  // Onboarding fields for Metria CRM
+  const [commercialName, setCommercialName] = useState(user.commercialName || "");
+  const [creci, setCreci] = useState(user.creci || "");
+  const [primaryCity, setPrimaryCity] = useState(user.primaryCity || "");
+  const [actingType, setActingType] = useState(user.actingType || "Venda");
   
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -35,13 +41,18 @@ export default function UserProfileModal({ user, onClose, onUpdateSuccess, onLog
         phone: phone.trim(),
         role: role.trim(),
         avatarUrl: avatarUrl.trim(),
+        commercialName: commercialName.trim(),
+        creci: creci.trim(),
+        primaryCity: primaryCity.trim(),
+        actingType: actingType,
+        onboardingCompleted: true, // Mark completed if not already
       };
 
       if (password) {
         payload.password = password;
       }
 
-      const res = await fetch(`/api/auth/update/${user.id || user._id}`, {
+      const res = await fetch(`/api/auth/update/${user.id || user._id || user.username || "vega"}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -199,6 +210,75 @@ export default function UserProfileModal({ user, onClose, onUpdateSuccess, onLog
                   onChange={(e) => setAvatarUrl(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 text-sm bg-surface-container-high border border-outline-variant/50 rounded-xl focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all text-on-surface"
                 />
+              </div>
+            </div>
+
+            <div className="border-t border-outline-variant/30 my-4 pt-4 space-y-3">
+              <h3 className="text-xs font-bold text-primary uppercase tracking-widest flex items-center gap-1.5 mb-2">
+                <Sparkles className="w-3.5 h-3.5 text-secondary animate-pulse" />
+                Dados do Metria CRM
+              </h3>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-on-surface-variant mb-1 uppercase tracking-wider">
+                    Nome Imobiliária
+                  </label>
+                  <input
+                    type="text"
+                    value={commercialName}
+                    onChange={(e) => setCommercialName(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-surface-container-high border border-outline-variant/50 rounded-xl focus:outline-none focus:border-primary/50 text-on-surface"
+                    placeholder="Ex: Imobiliária Silva"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-on-surface-variant mb-1 uppercase tracking-wider">
+                    CRECI (Opcional)
+                  </label>
+                  <input
+                    type="text"
+                    value={creci}
+                    onChange={(e) => setCreci(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-surface-container-high border border-outline-variant/50 rounded-xl focus:outline-none focus:border-primary/50 text-on-surface"
+                    placeholder="Ex: 12345-F"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-on-surface-variant mb-1 uppercase tracking-wider">
+                    Cidade de Atuação
+                  </label>
+                  <input
+                    type="text"
+                    value={primaryCity}
+                    onChange={(e) => setPrimaryCity(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-surface-container-high border border-outline-variant/50 rounded-xl focus:outline-none focus:border-primary/50 text-on-surface"
+                    placeholder="Ex: São Paulo / SP"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-on-surface-variant mb-1 uppercase tracking-wider">
+                    Tipo de Atuação
+                  </label>
+                  <select
+                    value={actingType}
+                    onChange={(e) => setActingType(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-surface-container-high border border-outline-variant/50 rounded-xl focus:outline-none focus:border-primary/50 text-on-surface"
+                  >
+                    <option value="Venda">Venda</option>
+                    <option value="Locação">Locação</option>
+                    <option value="Lançamentos">Lançamentos</option>
+                    <option value="Usados">Usados</option>
+                    <option value="Alto padrão">Alto padrão</option>
+                    <option value="Minha Casa Minha Vida">Minha Casa Minha Vida</option>
+                    <option value="Geral">Geral</option>
+                  </select>
+                </div>
               </div>
             </div>
 

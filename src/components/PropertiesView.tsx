@@ -91,6 +91,12 @@ export default function PropertiesView({ properties, clients, onAddProperty, onS
   const [isUploadingPhotos, setIsUploadingPhotos] = useState(false);
   const [ownerId, setOwnerId] = useState("");
 
+  useEffect(() => {
+    if (showAddForm && currentUser?.primaryCity) {
+      setCity(currentUser.primaryCity);
+    }
+  }, [showAddForm, currentUser]);
+
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
@@ -123,6 +129,7 @@ export default function PropertiesView({ properties, clients, onAddProperty, onS
   // Captador fields
   const [captadorName, setCaptadorName] = useState(currentUser?.name || "");
   const [captadorPhone, setCaptadorPhone] = useState(currentUser?.phone || "");
+  const [estimatedCommission, setEstimatedCommission] = useState("");
 
   // Sync with current logged-in user when form opens
   useEffect(() => {
@@ -200,6 +207,7 @@ export default function PropertiesView({ properties, clients, onAddProperty, onS
         status: "DISPONÍVEL",
         captadorName: captadorName || currentUser?.name || "Carlos Eduardo",
         captadorPhone: captadorPhone || currentUser?.phone || "(11) 98765-4321",
+        estimatedCommission: estimatedCommission ? Number(estimatedCommission) : undefined,
         ownerId: ownerId || undefined,
         createdAt: new Date().toISOString()
       };
@@ -216,6 +224,7 @@ export default function PropertiesView({ properties, clients, onAddProperty, onS
       setNeighborhood("");
       setArea("");
       setBuiltArea("");
+      setEstimatedCommission("");
       setConstructionYear("");
       setFloor("");
       setSunPosition("");
@@ -265,7 +274,7 @@ export default function PropertiesView({ properties, clients, onAddProperty, onS
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar imóveis ou localização..."
+                placeholder="Buscar por bairro, condomínio, código ou características..."
                 className="w-full pl-12 pr-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-xl focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all font-body-lg text-sm text-on-surface"
               />
             </div>
@@ -401,7 +410,7 @@ export default function PropertiesView({ properties, clients, onAddProperty, onS
             <div className="flex flex-col items-center justify-center text-center py-16 text-on-surface-variant bg-surface-container-low rounded-2xl border border-dashed border-outline-variant/50">
               <Home className="w-12 h-12 text-outline-variant stroke-[1] mb-3" />
               <p className="font-bold">Nenhum imóvel encontrado</p>
-              <p className="text-xs opacity-80 mt-1 max-w-xs">Insira outro termo de busca ou modifique o filtro.</p>
+              <p className="text-xs opacity-80 mt-1 max-w-xs">Nenhum imóvel atende aos filtros atuais. Amplie sua busca ou cadastre um novo imóvel para a sua carteira.</p>
             </div>
           )}
 
@@ -417,7 +426,7 @@ export default function PropertiesView({ properties, clients, onAddProperty, onS
         /* CADASTRO FORM VIEW */
         <div className="bg-surface-container-lowest rounded-2xl p-6 border border-outline-variant/30 shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-300">
           <header className="flex justify-between items-center pb-4 border-b border-outline-variant mb-6">
-            <h2 className="font-display text-headline-lg-mobile text-primary">Novo Imóvel</h2>
+            <h2 className="font-display text-headline-lg-mobile text-primary">Cadastrar Novo Imóvel</h2>
             <button
               onClick={() => setShowAddForm(false)}
               className="p-1.5 rounded-full hover:bg-surface-container-high transition-colors text-on-surface-variant"
@@ -931,22 +940,22 @@ export default function PropertiesView({ properties, clients, onAddProperty, onS
               </div>
             </div>
 
-            {/* Section 7: Captador do Imóvel */}
+            {/* Section 7: Captador e Comissão */}
             <div className="space-y-4 pt-2 border-t border-outline-variant/40">
               <h3 className="text-xs font-bold text-primary uppercase tracking-wider flex items-center gap-2">
                 <span className="w-1.5 h-4 bg-emerald-500 rounded-full animate-pulse"></span>
-                7. Captador do Imóvel
+                7. Captador e Comissão do Imóvel
               </h3>
               <p className="text-xs text-on-surface-variant">
-                Defina o corretor responsável pela captação deste imóvel. Por padrão, estes campos são preenchidos com os seus dados cadastrados.
+                Defina o corretor responsável pela captação deste imóvel e a comissão estimada para a transação.
               </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-semibold text-on-surface-variant">Nome do Captador</label>
                   <input
                     type="text"
                     required
-                    placeholder="Nome completo ou de exibição"
+                    placeholder="Nome completo"
                     value={captadorName}
                     onChange={(e) => setCaptadorName(e.target.value)}
                     className="h-11 px-3 border border-outline-variant rounded-lg bg-white outline-none text-sm focus:border-emerald-500 transition-all"
@@ -960,6 +969,17 @@ export default function PropertiesView({ properties, clients, onAddProperty, onS
                     placeholder="Ex: (11) 98765-4321"
                     value={captadorPhone}
                     onChange={(e) => setCaptadorPhone(e.target.value)}
+                    className="h-11 px-3 border border-outline-variant rounded-lg bg-white outline-none text-sm focus:border-emerald-500 transition-all"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-on-surface-variant">Comissão Estimada (%)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    placeholder="Ex: 5"
+                    value={estimatedCommission}
+                    onChange={(e) => setEstimatedCommission(e.target.value)}
                     className="h-11 px-3 border border-outline-variant rounded-lg bg-white outline-none text-sm focus:border-emerald-500 transition-all"
                   />
                 </div>

@@ -1,28 +1,57 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { LayoutDashboard, Home, Users, CalendarDays, Bell, Sparkles, Search, X, FolderSync } from "lucide-react";
-import { Property, Client, Task, DBStatus, User } from "./types";
+import { LayoutDashboard, Home, Users, CalendarDays, Bell, Sparkles, Search, X, FolderSync, Handshake } from "lucide-react";
+import { Property, Client, Task, DBStatus, User, Proposal, Visit } from "./types";
 import DashboardView from "./components/DashboardView";
 import PropertiesView from "./components/PropertiesView";
 import ClientsView from "./components/ClientsView";
 import TasksView from "./components/TasksView";
 import PipelineView from "./components/PipelineView";
+import TransactionsView from "./components/TransactionsView";
 import PropertyModal from "./components/PropertyModal";
 import ClientModal from "./components/ClientModal";
 import LoginView from "./components/LoginView";
 import UserProfileModal from "./components/UserProfileModal";
+import OnboardingModal from "./components/OnboardingModal";
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem("vega_crm_user");
-    return saved ? JSON.parse(saved) : null;
-  });
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const [showProfileModal, setShowProfileModal] = useState(false);
+
+  // Check session on mount
+  useEffect(() => {
+    const verifySession = async () => {
+      try {
+        const res = await fetch("/api/auth/me");
+        if (res.ok) {
+          const user = await res.json();
+          setCurrentUser(user);
+          localStorage.setItem("vega_crm_user", JSON.stringify(user));
+        } else {
+          setCurrentUser(null);
+          localStorage.removeItem("vega_crm_user");
+        }
+      } catch (err) {
+        console.error("Erro ao verificar sessão:", err);
+        // Fallback to local storage if offline/error to prevent disruption, but only as safeguard
+        const saved = localStorage.getItem("vega_crm_user");
+        if (saved) {
+          setCurrentUser(JSON.parse(saved));
+        }
+      } finally {
+        setCheckingAuth(false);
+      }
+    };
+    verifySession();
+  }, []);
 
   const [activeTab, setActiveTab] = useState<string>("dashboard");
   const [properties, setProperties] = useState<Property[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [proposals, setProposals] = useState<Proposal[]>([]);
+  const [visits, setVisits] = useState<Visit[]>([]);
   const [dbStatus, setDbStatus] = useState<DBStatus | null>(null);
 
   // Selected entities for detail modal view
@@ -87,23 +116,29 @@ export default function App() {
   // Fetch all initial data
   const fetchData = async () => {
     try {
-      const [resProps, resClients, resTasks, resStatus] = await Promise.all([
+      const [resProps, resClients, resTasks, resProposals, resVisits, resStatus] = await Promise.all([
         fetch("/api/properties"),
         fetch("/api/clients"),
         fetch("/api/tasks"),
+        fetch("/api/proposals"),
+        fetch("/api/visits"),
         fetch("/api/status")
       ]);
 
-      const [dataProps, dataClients, dataTasks, dataStatus] = await Promise.all([
+      const [dataProps, dataClients, dataTasks, dataProposals, dataVisits, dataStatus] = await Promise.all([
         resProps.json(),
         resClients.json(),
         resTasks.json(),
+        resProposals.json(),
+        resVisits.json(),
         resStatus.json()
       ]);
 
       if (Array.isArray(dataProps)) setProperties(dataProps);
       if (Array.isArray(dataClients)) setClients(dataClients);
       if (Array.isArray(dataTasks)) setTasks(dataTasks);
+      if (Array.isArray(dataProposals)) setProposals(dataProposals);
+      if (Array.isArray(dataVisits)) setVisits(dataVisits);
       setDbStatus(dataStatus);
     } catch (err) {
       console.error("Erro ao buscar dados do servidor:", err);
@@ -208,6 +243,90 @@ export default function App() {
     }
   };
 
+  // --- PROPOSALS CONTROLLERS ---
+  const handleAddProposal = async (newProposal: Omit<Proposal, "id">) => {
+    try {
+      const res = await fetch("/api/proposals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newProposal)
+      });
+      const data = await res.json();
+      setProposals(prev => [data, ...prev]);
+    } catch (err) {
+      console.error(err);
+      throw err;
+    }
+  };
+
+  const handleUpdateProposal = async (updated: Proposal) => {
+    const id = updated.id || updated._id;
+    try {
+      const res = await fetch(`/api/proposals/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updated)
+      });
+      const data = await res.json();
+      setProposals(prev => prev.map(p => (p.id === id || p._id === id ? data : p)));
+    } catch (err) {
+      console.error(err);
+      throw err;
+    }
+  };
+
+  const handleDeleteProposal = async (id: string) => {
+    try {
+      await fetch(`/api/proposals/${id}`, { method: "DELETE" });
+      setProposals(prev => prev.filter(p => p.id !== id && p._id !== id));
+    } catch (err) {
+      console.error(err);
+      throw err;
+    }
+  };
+
+  // --- VISITS CONTROLLERS ---
+  const handleAddVisit = async (newVisit: Omit<Visit, "id">) => {
+    try {
+      const res = await fetch("/api/visits", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newVisit)
+      });
+      const data = await res.json();
+      setVisits(prev => [data, ...prev]);
+    } catch (err) {
+      console.error(err);
+      throw err;
+    }
+  };
+
+  const handleUpdateVisit = async (updated: Visit) => {
+    const id = updated.id || updated._id;
+    try {
+      const res = await fetch(`/api/visits/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updated)
+      });
+      const data = await res.json();
+      setVisits(prev => prev.map(v => (v.id === id || v._id === id ? data : v)));
+    } catch (err) {
+      console.error(err);
+      throw err;
+    }
+  };
+
+  const handleDeleteVisit = async (id: string) => {
+    try {
+      await fetch(`/api/visits/${id}`, { method: "DELETE" });
+      setVisits(prev => prev.filter(v => v.id !== id && v._id !== id));
+    } catch (err) {
+      console.error(err);
+      throw err;
+    }
+  };
+
   // Tasks
   const handleAddTask = async (newTask: Omit<Task, "id">) => {
     try {
@@ -249,6 +368,19 @@ export default function App() {
     }
   };
 
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-primary flex items-center justify-center shadow-md animate-pulse">
+            <Home className="w-6 h-6 text-white animate-spin" />
+          </div>
+          <span className="text-sm font-semibold text-on-surface-variant">Carregando Metria CRM...</span>
+        </div>
+      </div>
+    );
+  }
+
   if (!currentUser) {
     return (
       <LoginView
@@ -260,8 +392,16 @@ export default function App() {
     );
   }
 
+  const handleOnboardingComplete = (updatedUser: User) => {
+    localStorage.setItem("vega_crm_user", JSON.stringify(updatedUser));
+    setCurrentUser(updatedUser);
+  };
+
   return (
     <div className="bg-background min-h-screen text-on-surface font-sans flex flex-col pb-28 md:pb-6">
+      {currentUser && !currentUser.onboardingCompleted && (
+        <OnboardingModal user={currentUser} onComplete={handleOnboardingComplete} />
+      )}
       
       {/* Top Application Bar */}
       <header className="flex justify-between items-center px-4 md:px-8 h-16 w-full sticky top-0 z-40 bg-surface/90 backdrop-blur-md border-b border-outline-variant/60 shadow-sm transition-all">
@@ -458,6 +598,7 @@ export default function App() {
                 clients={clients}
                 tasks={tasks}
                 dbStatus={dbStatus}
+                currentUser={currentUser}
                 onAddTask={handleAddTask}
                 onNavigateToTab={(tab) => setActiveTab(tab)}
               />
@@ -494,6 +635,7 @@ export default function App() {
                 clients={clients}
                 onAddClient={handleAddClient}
                 onSelectClient={(client) => setSelectedClient(client)}
+                currentUser={currentUser}
               />
             </motion.div>
           )}
@@ -531,6 +673,30 @@ export default function App() {
                 onDeleteTask={handleDeleteTask}
                 selectedDate={selectedTaskDate}
                 onDateChange={setSelectedTaskDate}
+              />
+            </motion.div>
+          )}
+
+          {activeTab === "transactions" && (
+            <motion.div
+              key="transactions"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <TransactionsView
+                proposals={proposals}
+                visits={visits}
+                clients={clients}
+                properties={properties}
+                onAddProposal={handleAddProposal}
+                onUpdateProposal={handleUpdateProposal}
+                onDeleteProposal={handleDeleteProposal}
+                onAddVisit={handleAddVisit}
+                onUpdateVisit={handleUpdateVisit}
+                onDeleteVisit={handleDeleteVisit}
+                currentUser={currentUser}
               />
             </motion.div>
           )}
@@ -603,6 +769,19 @@ export default function App() {
           <CalendarDays className="w-5 h-5 stroke-[2]" />
           <span className="text-[10px] mt-1 font-semibold">Agenda</span>
         </button>
+
+        {/* Transactions Link */}
+        <button
+          onClick={() => setActiveTab("transactions")}
+          className={`flex flex-col items-center justify-center px-4 py-1.5 rounded-xl transition-all cursor-pointer ${
+            activeTab === "transactions"
+              ? "bg-secondary-container text-on-secondary-container scale-105 font-bold"
+              : "text-on-surface-variant hover:bg-surface-container-high"
+          }`}
+        >
+          <Handshake className="w-5 h-5 stroke-[2]" />
+          <span className="text-[10px] mt-1 font-semibold">Propostas</span>
+        </button>
       </nav>
 
       {/* Desktop Sidebar Sidebar Navigation (visible on large viewports) */}
@@ -652,6 +831,15 @@ export default function App() {
         >
           <CalendarDays className="w-5 h-5" />
         </button>
+        <button
+          onClick={() => setActiveTab("transactions")}
+          className={`p-3 rounded-xl transition-all tooltip cursor-pointer ${
+            activeTab === "transactions" ? "bg-primary text-on-primary" : "text-on-surface-variant hover:bg-surface-container"
+          }`}
+          title="Propostas e Visitas"
+        >
+          <Handshake className="w-5 h-5" />
+        </button>
       </div>
 
       {/* Property Details Modal */}
@@ -690,7 +878,12 @@ export default function App() {
               localStorage.setItem("vega_crm_user", JSON.stringify(updatedUser));
               setCurrentUser(updatedUser);
             }}
-            onLogout={() => {
+            onLogout={async () => {
+              try {
+                await fetch("/api/auth/logout", { method: "POST" });
+              } catch (err) {
+                console.error("Erro ao realizar logout:", err);
+              }
               localStorage.removeItem("vega_crm_user");
               setCurrentUser(null);
               setShowProfileModal(false);

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Property, Client, Task, DBStatus } from "../types";
+import { Property, Client, Task, DBStatus, User } from "../types";
 import { Home, Users, DollarSign, Calendar, MapPin, Sparkles, Loader2, Plus, Check, CheckCircle2, Server, Database, Brain, Cake, Gift } from "lucide-react";
 
 interface DashboardViewProps {
@@ -7,11 +7,12 @@ interface DashboardViewProps {
   clients: Client[];
   tasks: Task[];
   dbStatus: DBStatus | null;
+  currentUser?: User | null;
   onAddTask: (task: Omit<Task, "id">) => Promise<void>;
   onNavigateToTab: (tab: string) => void;
 }
 
-export default function DashboardView({ properties, clients, tasks, dbStatus, onAddTask, onNavigateToTab }: DashboardViewProps) {
+export default function DashboardView({ properties, clients, tasks, dbStatus, currentUser, onAddTask, onNavigateToTab }: DashboardViewProps) {
   const [isGeneratingAiTasks, setIsGeneratingAiTasks] = useState(false);
   const [suggestedAiTasks, setSuggestedAiTasks] = useState<Task[]>([]);
   const [aiTasksAdded, setAiTasksAdded] = useState<Record<number, boolean>>({});
@@ -19,9 +20,10 @@ export default function DashboardView({ properties, clients, tasks, dbStatus, on
   // Welcome greeting
   const getGreeting = () => {
     const hours = new Date().getHours();
-    if (hours >= 5 && hours < 12) return "Bom dia, Corretor";
-    if (hours >= 12 && hours < 18) return "Boa tarde, Corretor";
-    return "Boa noite, Corretor";
+    const namePart = currentUser?.name ? `, ${currentUser.name.split(" ")[0]}` : "";
+    if (hours >= 5 && hours < 12) return `Bom dia${namePart}`;
+    if (hours >= 12 && hours < 18) return `Boa tarde${namePart}`;
+    return `Boa noite${namePart}`;
   };
 
   // Get upcoming and today's birthdays within the next 3 days
@@ -186,13 +188,35 @@ export default function DashboardView({ properties, clients, tasks, dbStatus, on
       </div>
 
       {/* Welcome Message */}
-      <section className="space-y-1">
-        <p className="font-label-caps text-label-caps text-secondary uppercase tracking-widest text-xs">
-          {getGreeting()}
-        </p>
-        <h2 className="font-display text-headline-lg text-on-surface tracking-tight leading-tight">
-          Pronto para fechar novos negócios hoje?
-        </h2>
+      <section className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-gradient-to-br from-primary/10 via-transparent to-transparent p-6 rounded-2xl border border-primary/10">
+        <div className="space-y-1.5">
+          <p className="font-label-caps text-label-caps text-secondary uppercase tracking-widest text-xs font-bold">
+            {getGreeting()}
+          </p>
+          <h2 className="font-display text-2xl font-black text-primary tracking-tight leading-tight md:max-w-xl">
+            {currentUser?.onboardingCompleted 
+              ? `Pronto para fechar novos negócios em ${currentUser.primaryCity} hoje?`
+              : "Nenhum lead, visita, proposta ou follow-up perdido hoje."}
+          </h2>
+          {currentUser?.onboardingCompleted && (
+            <p className="text-xs text-on-surface-variant font-medium mt-1">
+              Atuando no segmento de <span className="font-bold text-primary">{currentUser.actingType}</span> • {currentUser.commercialName || "Corretor Autônomo"}
+            </p>
+          )}
+        </div>
+        
+        {currentUser?.onboardingCompleted && (
+          <div className="flex flex-col items-end text-right bg-white px-4 py-3 rounded-xl border border-outline-variant/30 shadow-sm shrink-0 w-full sm:w-auto">
+            <span className="text-[9px] font-bold text-secondary uppercase tracking-widest">Configuração Ativa</span>
+            <span className="text-xs font-bold text-primary mt-0.5">{currentUser.commercialName || "Corretor Autônomo"}</span>
+            {currentUser.creci && (
+              <span className="text-[10px] text-on-surface-variant font-medium mt-0.5">CRECI {currentUser.creci}</span>
+            )}
+            <span className="text-[10px] text-on-surface-variant/70 font-mono mt-1 bg-surface-container px-2 py-0.5 rounded-full">
+              📍 {currentUser.primaryCity}
+            </span>
+          </div>
+        )}
       </section>
 
       {/* Birthday Alerts Banner */}
@@ -208,8 +232,8 @@ export default function DashboardView({ properties, clients, tasks, dbStatus, on
                 <Cake className="w-5 h-5 stroke-[2] animate-bounce" />
               </span>
               <div>
-                <h3 className="font-display text-title-md text-amber-900 font-bold leading-tight">Aniversariantes do Período</h3>
-                <p className="text-xs text-amber-800 font-semibold opacity-90">Clientes comemorando hoje e nos próximos 3 dias</p>
+                <h3 className="font-display text-title-md text-amber-900 font-bold leading-tight">Relacionamento Ativo • Aniversariantes</h3>
+                <p className="text-xs text-amber-800 font-semibold opacity-90">Parabenizar seu cliente fortalece o follow-up e abre portas para novas indicações.</p>
               </div>
             </div>
 
@@ -309,7 +333,7 @@ export default function DashboardView({ properties, clients, tasks, dbStatus, on
         >
           <Users className="text-secondary w-5 h-5 stroke-[2]" />
           <div>
-            <p className="font-label-md text-label-md text-on-surface-variant">Novos Leads</p>
+            <p className="font-label-md text-label-md text-on-surface-variant">Acompanhamentos Ativos</p>
             <p className="font-display text-headline-lg text-secondary">{newLeadsCount}</p>
           </div>
         </button>
@@ -321,7 +345,7 @@ export default function DashboardView({ properties, clients, tasks, dbStatus, on
           </div>
           <DollarSign className="text-secondary-fixed w-5 h-5 stroke-[2]" />
           <div className="z-10">
-            <p className="font-label-md text-label-md text-secondary-fixed opacity-90">Portfólio de Vendas</p>
+            <p className="font-label-md text-label-md text-secondary-fixed opacity-90">VGV Total sob Gestão</p>
             <p className="font-display text-headline-lg">R$ {formattedPortfolioValue}</p>
           </div>
         </div>
@@ -333,8 +357,8 @@ export default function DashboardView({ properties, clients, tasks, dbStatus, on
         {/* Goals Radial Chart */}
         <section className="bg-surface-container-lowest p-5 rounded-2xl border border-outline-variant/30 shadow-sm flex flex-col justify-between">
           <div>
-            <h3 className="font-display text-title-md text-on-surface leading-snug">Meta Mensal</h3>
-            <p className="text-xs text-on-surface-variant mt-0.5">Meta acumulada de vendas: R$ 3.0M</p>
+            <h3 className="font-display text-title-md text-on-surface leading-snug">Minha Meta de Fechamento</h3>
+            <p className="text-xs text-on-surface-variant mt-0.5">Meta mensal do corretor autônomo: R$ 3.0M</p>
           </div>
           
           <div className="flex flex-col items-center justify-center py-4">
@@ -365,7 +389,7 @@ export default function DashboardView({ properties, clients, tasks, dbStatus, on
         {/* Upcoming Visits */}
         <section className="bg-surface-container-lowest p-5 rounded-2xl border border-outline-variant/30 shadow-sm flex flex-col justify-between">
           <div className="flex justify-between items-center mb-3">
-            <h3 className="font-display text-title-md text-on-surface leading-snug">Próximas Visitas</h3>
+            <h3 className="font-display text-title-md text-on-surface leading-snug">Visitas Confirmadas</h3>
             <button onClick={() => onNavigateToTab("tasks")} className="text-xs text-secondary hover:underline font-semibold">
               Ver Agenda
             </button>
@@ -392,7 +416,7 @@ export default function DashboardView({ properties, clients, tasks, dbStatus, on
               <div className="flex flex-col items-center justify-center text-center h-full py-8 text-on-surface-variant">
                 <Calendar className="w-8 h-8 text-outline-variant stroke-[1.5] mb-2" />
                 <p className="text-xs font-semibold">Nenhuma visita agendada</p>
-                <p className="text-[10px] opacity-70 mt-0.5">Cadastre uma nova tarefa com o tipo "VISITA"</p>
+                <p className="text-[10px] opacity-70 mt-0.5">Agende visitas para aquecer seus negócios em andamento e evitar leads sem retorno.</p>
               </div>
             )}
           </div>
@@ -412,11 +436,11 @@ export default function DashboardView({ properties, clients, tasks, dbStatus, on
               <Sparkles className="w-3 h-3 text-secondary-fixed animate-pulse" />
               IA ASSISTENTE
             </span>
-            <h4 className="font-display text-title-md text-primary leading-tight">Recomendações Inteligentes do Dia</h4>
+            <h4 className="font-display text-title-md text-primary leading-tight">Inteligência Comercial Metria</h4>
           </div>
 
           <p className="text-on-surface-variant text-xs leading-relaxed max-w-xl">
-            Clique no botão abaixo para analisar sua lista de clientes e imóveis com a IA do Gemini e receber 3 tarefas estratégicas personalizadas para fechar negócios hoje!
+            Com base nos seus clientes em atendimento e carteira de imóveis, nossa inteligência analisa oportunidades de follow-up personalizados para você fechar negócios mais rápido.
           </p>
 
           <button
@@ -432,7 +456,7 @@ export default function DashboardView({ properties, clients, tasks, dbStatus, on
             ) : (
               <>
                 <Brain className="w-4 h-4 text-secondary-fixed" />
-                Gerar Tarefas Recomendadas por IA
+                Analisar Oportunidades de Venda
               </>
             )}
           </button>
@@ -440,7 +464,7 @@ export default function DashboardView({ properties, clients, tasks, dbStatus, on
           {/* AI suggested tasks display */}
           {suggestedAiTasks.length > 0 && (
             <div className="mt-4 space-y-3 animate-in fade-in slide-in-from-top-4 duration-300">
-              <h5 className="text-xs font-bold text-primary uppercase tracking-wider">Ações Recomendadas:</h5>
+              <h5 className="text-xs font-bold text-primary uppercase tracking-wider">Oportunidades de Follow-up Identificadas:</h5>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {suggestedAiTasks.map((task, idx) => {
                   const added = aiTasksAdded[idx];
@@ -491,9 +515,9 @@ export default function DashboardView({ properties, clients, tasks, dbStatus, on
       {/* Asymmetric Promotional Banner */}
       <section className="relative bg-primary-container text-on-primary rounded-2xl overflow-hidden p-6 shadow-sm border border-primary-container/30 flex items-center">
         <div className="relative z-10 max-w-[65%] space-y-2">
-          <h4 className="font-display text-headline-lg-mobile text-white leading-tight">Treinamento de Negociação</h4>
+          <h4 className="font-display text-headline-lg-mobile text-white leading-tight">Dicas de Venda e Captação</h4>
           <p className="text-xs text-on-primary-container opacity-90 leading-relaxed max-w-md">
-            Aprenda novas técnicas de copywriting imobiliário e programação neurolinguística (PNL) para converter leads frios em compradores ativos de alto padrão.
+            Converta leads frios em visitas ativas usando técnicas modernas de script e follow-up estruturados para corretores independentes.
           </p>
           <button className="bg-secondary-fixed text-on-secondary-fixed px-4 py-2 rounded-xl font-label-md text-xs font-bold hover:opacity-95 transition-all mt-2 cursor-pointer shadow-sm">
             Assistir Agora

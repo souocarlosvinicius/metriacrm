@@ -30,6 +30,25 @@ async function startServer() {
 
   app.use(express.json());
 
+  // Middleware to require authentication on private API endpoints
+  const requireAuth = (req: any, res: any, next: any) => {
+    const cookieHeader = req.headers.cookie || "";
+    const match = cookieHeader.match(/session_id=([^;]+)/);
+    const token = match ? match[1] : null;
+
+    if (!token) {
+      return res.status(401).json({ error: "Sessão expirada ou não autorizado. Por favor, faça login." });
+    }
+
+    const session = db.getSession(token);
+    if (!session) {
+      return res.status(401).json({ error: "Sessão inválida ou expirada. Por favor, faça login." });
+    }
+
+    req.userId = session.userId;
+    next();
+  };
+
   // --- API ROUTES ---
 
   // Database Connection Status
@@ -44,9 +63,9 @@ async function startServer() {
   // --- PROPERTIES (IMÓVEIS) ---
 
   // Get all properties
-  app.get("/api/properties", async (req, res) => {
+  app.get("/api/properties", requireAuth, async (req: any, res) => {
     try {
-      let list = await db.getProperties();
+      let list = await db.getProperties(req.userId);
       
       const { modality, search } = req.query;
       
@@ -72,9 +91,9 @@ async function startServer() {
   });
 
   // Get property by ID
-  app.get("/api/properties/:id", async (req, res) => {
+  app.get("/api/properties/:id", requireAuth, async (req: any, res) => {
     try {
-      const property = await db.getPropertyById(req.params.id);
+      const property = await db.getPropertyById(req.params.id, req.userId);
       if (!property) {
         return res.status(404).json({ error: "Imóvel não encontrado" });
       }
@@ -85,9 +104,9 @@ async function startServer() {
   });
 
   // Add new property
-  app.post("/api/properties", async (req, res) => {
+  app.post("/api/properties", requireAuth, async (req: any, res) => {
     try {
-      const newProp = await db.addProperty(req.body);
+      const newProp = await db.addProperty(req.body, req.userId);
       res.status(201).json(newProp);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -95,11 +114,11 @@ async function startServer() {
   });
 
   // Update property
-  app.put("/api/properties/:id", async (req, res) => {
+  app.put("/api/properties/:id", requireAuth, async (req: any, res) => {
     try {
-      const updated = await db.updateProperty(req.params.id, req.body);
+      const updated = await db.updateProperty(req.params.id, req.body, req.userId);
       if (!updated) {
-        return res.status(404).json({ error: "Imóvel não encontrado para atualização" });
+        return res.status(404).json({ error: "Imóvel não encontrado para atualização ou permissão negada" });
       }
       res.json(updated);
     } catch (err: any) {
@@ -108,11 +127,11 @@ async function startServer() {
   });
 
   // Delete property
-  app.delete("/api/properties/:id", async (req, res) => {
+  app.delete("/api/properties/:id", requireAuth, async (req: any, res) => {
     try {
-      const success = await db.deleteProperty(req.params.id);
+      const success = await db.deleteProperty(req.params.id, req.userId);
       if (!success) {
-        return res.status(404).json({ error: "Imóvel não encontrado para exclusão" });
+        return res.status(404).json({ error: "Imóvel não encontrado para exclusão ou permissão negada" });
       }
       res.json({ message: "Imóvel excluído com sucesso" });
     } catch (err: any) {
@@ -123,9 +142,9 @@ async function startServer() {
   // --- CLIENTS (CLIENTES) ---
 
   // Get all clients
-  app.get("/api/clients", async (req, res) => {
+  app.get("/api/clients", requireAuth, async (req: any, res) => {
     try {
-      let list = await db.getClients();
+      let list = await db.getClients(req.userId);
       
       const { profileType, search } = req.query;
       
@@ -151,9 +170,9 @@ async function startServer() {
   });
 
   // Get client by ID
-  app.get("/api/clients/:id", async (req, res) => {
+  app.get("/api/clients/:id", requireAuth, async (req: any, res) => {
     try {
-      const client = await db.getClientById(req.params.id);
+      const client = await db.getClientById(req.params.id, req.userId);
       if (!client) {
         return res.status(404).json({ error: "Cliente não encontrado" });
       }
@@ -164,9 +183,9 @@ async function startServer() {
   });
 
   // Add new client
-  app.post("/api/clients", async (req, res) => {
+  app.post("/api/clients", requireAuth, async (req: any, res) => {
     try {
-      const newClient = await db.addClient(req.body);
+      const newClient = await db.addClient(req.body, req.userId);
       res.status(201).json(newClient);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -174,11 +193,11 @@ async function startServer() {
   });
 
   // Update client
-  app.put("/api/clients/:id", async (req, res) => {
+  app.put("/api/clients/:id", requireAuth, async (req: any, res) => {
     try {
-      const updated = await db.updateClient(req.params.id, req.body);
+      const updated = await db.updateClient(req.params.id, req.body, req.userId);
       if (!updated) {
-        return res.status(404).json({ error: "Cliente não encontrado para atualização" });
+        return res.status(404).json({ error: "Cliente não encontrado para atualização ou permissão negada" });
       }
       res.json(updated);
     } catch (err: any) {
@@ -187,11 +206,11 @@ async function startServer() {
   });
 
   // Delete client
-  app.delete("/api/clients/:id", async (req, res) => {
+  app.delete("/api/clients/:id", requireAuth, async (req: any, res) => {
     try {
-      const success = await db.deleteClient(req.params.id);
+      const success = await db.deleteClient(req.params.id, req.userId);
       if (!success) {
-        return res.status(404).json({ error: "Cliente não encontrado para exclusão" });
+        return res.status(404).json({ error: "Cliente não encontrado para exclusão ou permissão negada" });
       }
       res.json({ message: "Cliente excluído com sucesso" });
     } catch (err: any) {
@@ -202,9 +221,9 @@ async function startServer() {
   // --- TASKS (TAREFAS) ---
 
   // Get all tasks
-  app.get("/api/tasks", async (req, res) => {
+  app.get("/api/tasks", requireAuth, async (req: any, res) => {
     try {
-      let list = await db.getTasks();
+      let list = await db.getTasks(req.userId);
       
       const { date } = req.query;
       if (date) {
@@ -221,9 +240,9 @@ async function startServer() {
   });
 
   // Add new task
-  app.post("/api/tasks", async (req, res) => {
+  app.post("/api/tasks", requireAuth, async (req: any, res) => {
     try {
-      const newTask = await db.addTask(req.body);
+      const newTask = await db.addTask(req.body, req.userId);
       res.status(201).json(newTask);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -231,11 +250,11 @@ async function startServer() {
   });
 
   // Update task
-  app.put("/api/tasks/:id", async (req, res) => {
+  app.put("/api/tasks/:id", requireAuth, async (req: any, res) => {
     try {
-      const updated = await db.updateTask(req.params.id, req.body);
+      const updated = await db.updateTask(req.params.id, req.body, req.userId);
       if (!updated) {
-        return res.status(404).json({ error: "Tarefa não encontrada para atualização" });
+        return res.status(404).json({ error: "Tarefa não encontrada para atualização ou permissão negada" });
       }
       res.json(updated);
     } catch (err: any) {
@@ -244,13 +263,109 @@ async function startServer() {
   });
 
   // Delete task
-  app.delete("/api/tasks/:id", async (req, res) => {
+  app.delete("/api/tasks/:id", requireAuth, async (req: any, res) => {
     try {
-      const success = await db.deleteTask(req.params.id);
+      const success = await db.deleteTask(req.params.id, req.userId);
       if (!success) {
-        return res.status(404).json({ error: "Tarefa não encontrada para exclusão" });
+        return res.status(404).json({ error: "Tarefa não encontrada para exclusão ou permissão negada" });
       }
       res.json({ message: "Tarefa excluída com sucesso" });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // --- PROPOSALS (PROPOSTAS) ---
+
+  // Get all proposals
+  app.get("/api/proposals", requireAuth, async (req: any, res) => {
+    try {
+      const list = await db.getProposals(req.userId);
+      res.json(list);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Create proposal
+  app.post("/api/proposals", requireAuth, async (req: any, res) => {
+    try {
+      const proposal = await db.addProposal(req.body, req.userId);
+      res.status(211).json(proposal);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Update proposal
+  app.put("/api/proposals/:id", requireAuth, async (req: any, res) => {
+    try {
+      const updated = await db.updateProposal(req.params.id, req.body, req.userId);
+      if (!updated) {
+        return res.status(404).json({ error: "Proposta não encontrada para atualização" });
+      }
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Delete proposal
+  app.delete("/api/proposals/:id", requireAuth, async (req: any, res) => {
+    try {
+      const success = await db.deleteProposal(req.params.id, req.userId);
+      if (!success) {
+        return res.status(404).json({ error: "Proposta não encontrada para exclusão" });
+      }
+      res.json({ message: "Proposta excluída com sucesso" });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // --- VISITS (VISITAS) ---
+
+  // Get all visits
+  app.get("/api/visits", requireAuth, async (req: any, res) => {
+    try {
+      const list = await db.getVisits(req.userId);
+      res.json(list);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Create visit
+  app.post("/api/visits", requireAuth, async (req: any, res) => {
+    try {
+      const visit = await db.addVisit(req.body, req.userId);
+      res.status(211).json(visit);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Update visit
+  app.put("/api/visits/:id", requireAuth, async (req: any, res) => {
+    try {
+      const updated = await db.updateVisit(req.params.id, req.body, req.userId);
+      if (!updated) {
+        return res.status(404).json({ error: "Visita não encontrada para atualização" });
+      }
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Delete visit
+  app.delete("/api/visits/:id", requireAuth, async (req: any, res) => {
+    try {
+      const success = await db.deleteVisit(req.params.id, req.userId);
+      if (!success) {
+        return res.status(404).json({ error: "Visita não encontrada para exclusão" });
+      }
+      res.json({ message: "Visita excluída com sucesso" });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -259,7 +374,7 @@ async function startServer() {
   // --- AI FEATURES (GEMINI) ---
 
   // Generate elegant property descriptions
-  app.post("/api/ai/generate-description", async (req, res) => {
+  app.post("/api/ai/generate-description", requireAuth, async (req: any, res) => {
     if (!ai) {
       return res.status(400).json({
         error: "O serviço de inteligência artificial não está configurado. Por favor, configure GEMINI_API_KEY.",
@@ -302,7 +417,7 @@ Diretrizes da Redação:
   });
 
   // Suggest daily action steps based on client profiles or property pipeline
-  app.post("/api/ai/suggest-tasks", async (req, res) => {
+  app.post("/api/ai/suggest-tasks", requireAuth, async (req: any, res) => {
     if (!ai) {
       return res.status(400).json({
         error: "O serviço de inteligência artificial não está configurado. Por favor, configure GEMINI_API_KEY.",
@@ -350,24 +465,64 @@ Exemplo de formato esperado:
 
   // --- USER AUTHENTICATION & PROFILE ---
 
+  // Get current authenticated user
+  app.get("/api/auth/me", async (req, res) => {
+    try {
+      const cookieHeader = req.headers.cookie || "";
+      const match = cookieHeader.match(/session_id=([^;]+)/);
+      const token = match ? match[1] : null;
+
+      if (!token) {
+        return res.status(401).json({ error: "Sessão expirada ou não autenticado." });
+      }
+
+      const session = db.getSession(token);
+      if (!session) {
+        return res.status(401).json({ error: "Sessão inválida ou expirada." });
+      }
+
+      const users = await db.getUsers();
+      const user = users.find(u => u.id === session.userId || u._id?.toString() === session.userId);
+      if (!user) {
+        return res.status(401).json({ error: "Usuário não encontrado." });
+      }
+
+      const { password: _, ...clean } = user;
+      res.json(clean);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Login
   app.post("/api/auth/login", async (req, res) => {
     try {
       const { username, password } = req.body;
       if (!username || !password) {
-        return res.status(400).json({ error: "Nome de usuário e senha são obrigatórios" });
+        return res.status(400).json({ error: "Nome de usuário/e-mail e senha são obrigatórios." });
       }
+
       const user = await db.validateUser(username, password);
       if (!user) {
-        return res.status(401).json({ error: "Usuário ou senha incorretos" });
+        return res.status(401).json({ error: "E-mail, usuário ou senha incorretos." });
       }
+
+      const sessionToken = db.createSession(user.id!);
+      res.cookie("session_id", sessionToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+        path: "/"
+      });
+
       res.json(user);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  // Register on the fly / sign up
+  // Register a new user
   app.post("/api/auth/register", async (req, res) => {
     try {
       const { username, password, name, email, avatarUrl, role, phone } = req.body;
@@ -376,9 +531,14 @@ Exemplo de formato esperado:
       }
       
       const allUsers = await db.getUsers();
-      const exists = allUsers.find(u => u.username.toLowerCase() === username.toLowerCase());
-      if (exists) {
-        return res.status(400).json({ error: "Este nome de usuário já está em uso" });
+      const usernameExists = allUsers.some(u => u.username.toLowerCase() === username.toLowerCase());
+      if (usernameExists) {
+        return res.status(400).json({ error: "Este nome de usuário já está em uso." });
+      }
+
+      const emailExists = allUsers.some(u => u.email && u.email.toLowerCase() === email.toLowerCase());
+      if (emailExists) {
+        return res.status(400).json({ error: "Este endereço de e-mail já está em uso." });
       }
 
       const newUser = await db.registerUser({
@@ -390,16 +550,49 @@ Exemplo de formato esperado:
         role,
         phone
       });
+
+      const sessionToken = db.createSession(newUser.id!);
+      res.cookie("session_id", sessionToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+        path: "/"
+      });
+
       res.status(201).json(newUser);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  // Update user profile
-  app.put("/api/auth/update/:id", async (req, res) => {
+  // Logout
+  app.post("/api/auth/logout", async (req, res) => {
+    try {
+      const cookieHeader = req.headers.cookie || "";
+      const match = cookieHeader.match(/session_id=([^;]+)/);
+      const token = match ? match[1] : null;
+
+      if (token) {
+        db.deleteSession(token);
+      }
+
+      res.clearCookie("session_id", { path: "/" });
+      res.json({ message: "Logout realizado com sucesso." });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Update user profile (Only authenticated and owner)
+  app.put("/api/auth/update/:id", requireAuth, async (req: any, res) => {
     try {
       const { id } = req.params;
+      
+      if (req.userId !== id) {
+        return res.status(403).json({ error: "Você não tem permissão para atualizar o perfil de outro usuário." });
+      }
+
       const updated = await db.updateUser(id, req.body);
       if (!updated) {
         return res.status(404).json({ error: "Usuário não encontrado" });

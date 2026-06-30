@@ -31,6 +31,16 @@ export default function ClientModal({ client, onClose, onUpdate, onDelete }: Cli
   const [birthday, setBirthday] = useState(client.birthday || "");
   const [address, setAddress] = useState(client.address || "");
 
+  // Real estate CRM extensions
+  const [leadSource, setLeadSource] = useState(client.leadSource || "Outro");
+  const [interest, setInterest] = useState(client.interest || "Compra");
+  const [budgetRange, setBudgetRange] = useState(client.budgetRange || "");
+  const [neighborhoodOfInterest, setNeighborhoodOfInterest] = useState(client.neighborhoodOfInterest || "");
+  const [desiredPropertyType, setDesiredPropertyType] = useState(client.desiredPropertyType || "");
+  const [temperature, setTemperature] = useState<"Frio" | "Morno" | "Quente">(client.temperature || "Morno");
+  const [nextAction, setNextAction] = useState(client.nextAction || "");
+  const [nextFollowUpDate, setNextFollowUpDate] = useState(client.nextFollowUpDate || "");
+
   // Get client's visual initials
   const getInitials = (fullName: string) => {
     return (fullName || "")
@@ -63,6 +73,14 @@ export default function ClientModal({ client, onClose, onUpdate, onDelete }: Cli
         pipelineStatus,
         birthday: birthday || undefined,
         address: address || undefined,
+        leadSource,
+        interest,
+        budgetRange,
+        neighborhoodOfInterest,
+        desiredPropertyType,
+        temperature,
+        nextAction,
+        nextFollowUpDate,
       };
       await onUpdate(updatedClient);
       setIsEditing(false);
@@ -75,13 +93,13 @@ export default function ClientModal({ client, onClose, onUpdate, onDelete }: Cli
   };
 
   const handleDelete = async () => {
-    if (confirm(`Excluir o cliente "${client.name}" do sistema?`)) {
+    if (confirm(`Deseja realmente remover o cadastro de "${client.name}"? Esta ação não poderá ser desfeita.`)) {
       try {
         await onDelete(client.id || client._id || "");
         onClose();
       } catch (err) {
         console.error(err);
-        alert("Erro ao deletar cliente.");
+        alert("Erro ao excluir o cadastro do cliente.");
       }
     }
   };
@@ -206,23 +224,59 @@ export default function ClientModal({ client, onClose, onUpdate, onDelete }: Cli
                 </div>
               </div>
 
+              {/* Informações de Lead / Negócio */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-primary uppercase tracking-wider">Status & Qualificação</h4>
+                <div className="grid grid-cols-2 gap-3 bg-surface-container-lowest p-4 rounded-xl border border-outline-variant/20 shadow-sm text-sm">
+                  <div>
+                    <p className="text-[10px] text-on-surface-variant uppercase font-bold">Temperatura</p>
+                    <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold mt-1 ${
+                      client.temperature === "Quente" ? "bg-red-100 text-red-800" :
+                      client.temperature === "Frio" ? "bg-blue-100 text-blue-800" : "bg-orange-100 text-orange-800"
+                    }`}>
+                      {client.temperature || "Morno"}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-on-surface-variant uppercase font-bold">Origem do Lead</p>
+                    <p className="font-semibold text-on-surface mt-1">{client.leadSource || "Não informada"}</p>
+                  </div>
+                  <div className="col-span-2 pt-2 border-t border-outline-variant/40">
+                    <p className="text-[10px] text-on-surface-variant uppercase font-bold">Próxima Ação</p>
+                    <p className="font-semibold text-on-surface mt-0.5">{client.nextAction || "Nenhuma ação planejada"}</p>
+                  </div>
+                  {client.nextFollowUpDate && (
+                    <div className="col-span-2 pt-2 border-t border-outline-variant/40">
+                      <p className="text-[10px] text-on-surface-variant uppercase font-bold">Data do Próximo Follow-up</p>
+                      <p className="font-semibold text-red-600 mt-0.5">
+                        {client.nextFollowUpDate.split("-").reverse().join("/")}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* Client Preference & Budget Section */}
               <div className="space-y-3">
-                <h4 className="text-xs font-bold text-primary uppercase tracking-wider">Preferências de Interesse</h4>
+                <h4 className="text-xs font-bold text-primary uppercase tracking-wider">Perfil & Interesse Imobiliário</h4>
                 
                 <div className="grid grid-cols-2 gap-3 bg-surface-container-lowest p-4 rounded-xl border border-outline-variant/20 shadow-sm text-sm">
                   <div>
-                    <p className="text-[10px] text-on-surface-variant uppercase font-bold">Objetivo</p>
-                    <p className="font-semibold text-primary text-body-sm mt-0.5">{client.objective}</p>
+                    <p className="text-[10px] text-on-surface-variant uppercase font-bold">Interesse</p>
+                    <p className="font-semibold text-primary mt-0.5">{client.interest || client.objective || "Compra"}</p>
                   </div>
                   <div>
-                    <p className="text-[10px] text-on-surface-variant uppercase font-bold">Tipo de Imóvel</p>
-                    <p className="font-semibold text-primary text-body-sm mt-0.5">{client.propertyType || "Qualquer"}</p>
+                    <p className="text-[10px] text-on-surface-variant uppercase font-bold">Tipo Desejado</p>
+                    <p className="font-semibold text-primary mt-0.5">{client.desiredPropertyType || client.propertyType || "Qualquer"}</p>
                   </div>
-                  <div className="col-span-2 pt-2 border-t border-outline-variant/40">
-                    <p className="text-[10px] text-on-surface-variant uppercase font-bold">Orçamento Estimado</p>
-                    <p className="font-semibold text-primary text-body-sm mt-0.5">
-                      R$ {(client.minBudget ?? 0).toLocaleString("pt-BR")} até R$ {(client.maxBudget ?? 0).toLocaleString("pt-BR")}
+                  <div className="pt-2 border-t border-outline-variant/40">
+                    <p className="text-[10px] text-on-surface-variant uppercase font-bold">Bairro de Interesse</p>
+                    <p className="font-semibold text-on-surface mt-0.5">{client.neighborhoodOfInterest || "Qualquer"}</p>
+                  </div>
+                  <div className="pt-2 border-t border-outline-variant/40">
+                    <p className="text-[10px] text-on-surface-variant uppercase font-bold">Orçamento / Faixa</p>
+                    <p className="font-semibold text-on-surface mt-0.5">
+                      {client.budgetRange || `R$ ${(client.minBudget ?? 0).toLocaleString("pt-BR")} - R$ ${(client.maxBudget ?? 0).toLocaleString("pt-BR")}`}
                     </p>
                   </div>
                 </div>
@@ -419,33 +473,107 @@ export default function ClientModal({ client, onClose, onUpdate, onDelete }: Cli
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1">
-                  <label className="text-[10px] font-bold text-primary uppercase">Tipo Imóvel</label>
+                  <label className="text-xs font-bold text-primary uppercase">Interesse</label>
+                  <select
+                    value={interest}
+                    onChange={(e) => setInterest(e.target.value)}
+                    className="h-11 px-3 border border-outline-variant bg-white rounded-lg text-sm"
+                  >
+                    <option>Compra</option>
+                    <option>Venda</option>
+                    <option>Locação</option>
+                    <option>Avaliação</option>
+                    <option>Investimento</option>
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-primary uppercase">Tipo de Imóvel Desejado</label>
                   <input
                     type="text"
-                    value={propertyType}
-                    onChange={(e) => setPropertyType(e.target.value)}
-                    placeholder="ex: Apartamento"
+                    value={desiredPropertyType}
+                    onChange={(e) => setDesiredPropertyType(e.target.value)}
+                    placeholder="Ex: Apartamento, Casa"
+                    className="h-11 px-3 border border-outline-variant rounded-lg text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-primary uppercase">Bairro de Interesse</label>
+                  <input
+                    type="text"
+                    value={neighborhoodOfInterest}
+                    onChange={(e) => setNeighborhoodOfInterest(e.target.value)}
+                    placeholder="Ex: Copacabana, Ipanema"
                     className="h-11 px-3 border border-outline-variant rounded-lg text-sm"
                   />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-[10px] font-bold text-primary uppercase">Orçam. Mín.</label>
+                  <label className="text-xs font-bold text-primary uppercase">Faixa de Orçamento</label>
                   <input
-                    type="number"
-                    value={minBudget}
-                    onChange={(e) => setMinBudget(Number(e.target.value))}
+                    type="text"
+                    value={budgetRange}
+                    onChange={(e) => setBudgetRange(e.target.value)}
+                    placeholder="Ex: R$ 500k - R$ 800k"
+                    className="h-11 px-3 border border-outline-variant rounded-lg text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-primary uppercase">Origem do Lead</label>
+                  <select
+                    value={leadSource}
+                    onChange={(e) => setLeadSource(e.target.value)}
+                    className="h-11 px-3 border border-outline-variant bg-white rounded-lg text-sm"
+                  >
+                    <option>Indicação</option>
+                    <option>Instagram</option>
+                    <option>Facebook</option>
+                    <option>OLX</option>
+                    <option>Portal Imobiliário</option>
+                    <option>Placa</option>
+                    <option>WhatsApp</option>
+                    <option>Tráfego Pago</option>
+                    <option>Outro</option>
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-primary uppercase">Temperatura do Lead</label>
+                  <select
+                    value={temperature}
+                    onChange={(e) => setTemperature(e.target.value as any)}
+                    className="h-11 px-3 border border-outline-variant bg-white rounded-lg text-sm"
+                  >
+                    <option>Frio</option>
+                    <option>Morno</option>
+                    <option>Quente</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-primary uppercase">Próxima Ação</label>
+                  <input
+                    type="text"
+                    value={nextAction}
+                    onChange={(e) => setNextAction(e.target.value)}
+                    placeholder="Ex: Enviar proposta de financiamento"
                     className="h-11 px-3 border border-outline-variant rounded-lg text-sm"
                   />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-[10px] font-bold text-primary uppercase">Orçam. Máx.</label>
+                  <label className="text-xs font-bold text-primary uppercase">Data do Próximo Follow-up</label>
                   <input
-                    type="number"
-                    value={maxBudget}
-                    onChange={(e) => setMaxBudget(Number(e.target.value))}
-                    className="h-11 px-3 border border-outline-variant rounded-lg text-sm"
+                    type="date"
+                    value={nextFollowUpDate}
+                    onChange={(e) => setNextFollowUpDate(e.target.value)}
+                    className="h-11 px-3 border border-outline-variant rounded-lg focus:border-secondary bg-white outline-none text-sm"
                   />
                 </div>
               </div>

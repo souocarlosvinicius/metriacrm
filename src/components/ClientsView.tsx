@@ -1,14 +1,15 @@
-import React, { useState } from "react";
-import { Client } from "../types";
+import React, { useState, useEffect } from "react";
+import { Client, User } from "../types";
 import { Search, UserPlus, Mail, Phone, Plus, X, Save, Loader2, Check } from "lucide-react";
 
 interface ClientsViewProps {
   clients: Client[];
   onAddClient: (client: Omit<Client, "id">) => Promise<void>;
   onSelectClient: (client: Client) => void;
+  currentUser?: User | null;
 }
 
-export default function ClientsView({ clients, onAddClient, onSelectClient }: ClientsViewProps) {
+export default function ClientsView({ clients, onAddClient, onSelectClient, currentUser }: ClientsViewProps) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("Todos");
   const [showAddForm, setShowAddForm] = useState(false);
@@ -28,6 +29,22 @@ export default function ClientsView({ clients, onAddClient, onSelectClient }: Cl
   const [observations, setObservations] = useState("");
   const [birthday, setBirthday] = useState("");
   const [address, setAddress] = useState("");
+
+  // New real estate CRM fields
+  const [leadSource, setLeadSource] = useState("Outro");
+  const [interest, setInterest] = useState("Compra");
+  const [budgetRange, setBudgetRange] = useState("");
+  const [neighborhoodOfInterest, setNeighborhoodOfInterest] = useState("");
+  const [desiredPropertyType, setDesiredPropertyType] = useState("");
+  const [temperature, setTemperature] = useState<"Frio" | "Morno" | "Quente">("Morno");
+  const [nextAction, setNextAction] = useState("");
+  const [nextFollowUpDate, setNextFollowUpDate] = useState("");
+
+  useEffect(() => {
+    if (showAddForm && currentUser?.primaryCity) {
+      setAddress(currentUser.primaryCity);
+    }
+  }, [showAddForm, currentUser]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,6 +70,14 @@ export default function ClientsView({ clients, onAddClient, onSelectClient }: Cl
         birthday: birthday || undefined,
         address: address || undefined,
         status: "Novo",
+        leadSource,
+        interest,
+        budgetRange,
+        neighborhoodOfInterest,
+        desiredPropertyType,
+        temperature,
+        nextAction,
+        nextFollowUpDate: nextFollowUpDate || undefined,
         createdAt: new Date().toISOString()
       };
 
@@ -70,6 +95,14 @@ export default function ClientsView({ clients, onAddClient, onSelectClient }: Cl
       setObservations("");
       setBirthday("");
       setAddress("");
+      setLeadSource("Outro");
+      setInterest("Compra");
+      setBudgetRange("");
+      setNeighborhoodOfInterest("");
+      setDesiredPropertyType("");
+      setTemperature("Morno");
+      setNextAction("");
+      setNextFollowUpDate("");
       setShowAddForm(false);
     } catch (err) {
       console.error(err);
@@ -120,14 +153,14 @@ export default function ClientsView({ clients, onAddClient, onSelectClient }: Cl
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar contatos..."
+                placeholder="Buscar por nome, telefone, e-mail ou observações..."
                 className="w-full pl-12 pr-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-xl focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all font-body-lg text-sm text-on-surface"
               />
             </div>
 
             {/* Profile Type Filter Chips */}
             <div className="flex gap-2 overflow-x-auto pb-1">
-              {["Todos", "Lead", "Comprador", "Locatário", "Proprietário"].map((tab) => {
+              {["Todos", "Lead", "Comprador", "Vendedor", "Locador", "Locatário", "Investidor"].map((tab) => {
                 const isActive = filter === tab;
                 return (
                   <button
@@ -149,7 +182,7 @@ export default function ClientsView({ clients, onAddClient, onSelectClient }: Cl
           {/* Client List */}
           <div className="space-y-3">
             <div className="flex items-center justify-between px-1">
-              <span className="font-label-caps text-xs text-on-surface-variant tracking-wider font-bold">RECENTES</span>
+              <span className="font-label-caps text-xs text-on-surface-variant tracking-wider font-bold">LEADS E CLIENTES CADASTRADOS</span>
               <span className="text-xs text-primary font-bold">{filteredClients.length} contatos</span>
             </div>
 
@@ -199,8 +232,8 @@ export default function ClientsView({ clients, onAddClient, onSelectClient }: Cl
           {filteredClients.length === 0 && (
             <div className="flex flex-col items-center justify-center text-center py-16 text-on-surface-variant bg-surface-container-low rounded-2xl border border-dashed border-outline-variant/50">
               <UserPlus className="w-12 h-12 text-outline-variant stroke-[1] mb-3" />
-              <p className="font-bold">Nenhum cliente encontrado</p>
-              <p className="text-xs opacity-80 mt-1 max-w-xs">Insira outro nome ou termo de busca.</p>
+              <p className="font-bold">Nenhum lead ou cliente encontrado</p>
+              <p className="text-xs opacity-80 mt-1 max-w-xs">Busque por outro termo ou cadastre um novo cliente para organizar seus follow-ups.</p>
             </div>
           )}
 
@@ -216,7 +249,7 @@ export default function ClientsView({ clients, onAddClient, onSelectClient }: Cl
         /* NOVO CLIENTE FORM SCREEN */
         <div className="bg-surface-container-lowest rounded-2xl p-6 border border-outline-variant/30 shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-300">
           <header className="flex justify-between items-center pb-4 border-b border-outline-variant mb-6">
-            <h2 className="font-display text-headline-lg-mobile text-primary">Novo Cliente</h2>
+            <h2 className="font-display text-headline-lg-mobile text-primary">Cadastrar Novo Cliente</h2>
             <button
               onClick={() => setShowAddForm(false)}
               className="p-1.5 rounded-full hover:bg-surface-container-high transition-colors text-on-surface-variant"
@@ -342,8 +375,8 @@ export default function ClientsView({ clients, onAddClient, onSelectClient }: Cl
                 2. Tipo de Perfil
               </h3>
 
-              <div className="grid grid-cols-2 gap-2">
-                {["Lead", "Comprador", "Locatário", "Proprietário"].map((item) => {
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {["Lead", "Comprador", "Vendedor", "Locador", "Locatário", "Investidor"].map((item) => {
                   const isActive = profileType === item;
                   return (
                     <button
@@ -367,71 +400,115 @@ export default function ClientsView({ clients, onAddClient, onSelectClient }: Cl
             <div className="space-y-4 pt-2 border-t border-outline-variant/40">
               <h3 className="text-xs font-bold text-primary uppercase tracking-wider flex items-center gap-2">
                 <span className="w-1.5 h-4 bg-secondary rounded-full"></span>
-                3. Preferências de Interesse
+                3. Interesse Imobiliário e Qualificação de Lead
               </h3>
 
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-on-surface-variant">Objetivo de Interesse</label>
-                <div className="flex gap-2">
-                  {["Venda", "Aluguel", "Temporada"].map((item) => {
-                    const isActive = objective === item;
-                    return (
-                      <button
-                        type="button"
-                        key={item}
-                        onClick={() => setObjective(item)}
-                        className={`px-4 py-2 border rounded-full text-xs font-bold cursor-pointer transition-all ${
-                          isActive
-                            ? "bg-primary text-on-primary border-primary"
-                            : "bg-white border-outline-variant text-on-surface-variant hover:bg-surface-container"
-                        }`}
-                      >
-                        {item}
-                      </button>
-                    );
-                  })}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-on-surface-variant">Objetivo de Interesse</label>
+                  <select
+                    value={interest}
+                    onChange={(e) => setInterest(e.target.value)}
+                    className="h-11 px-3 border border-outline-variant bg-white rounded-lg text-sm outline-none"
+                  >
+                    <option value="Compra">Compra</option>
+                    <option value="Venda">Venda</option>
+                    <option value="Locação">Locação</option>
+                    <option value="Avaliação">Avaliação</option>
+                    <option value="Investimento">Investimento</option>
+                  </select>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-on-surface-variant">Tipo de Imóvel Desejado</label>
+                  <input
+                    type="text"
+                    value={desiredPropertyType}
+                    onChange={(e) => setDesiredPropertyType(e.target.value)}
+                    placeholder="Ex: Apartamento, Casa de Condomínio"
+                    className="h-11 px-3 border border-outline-variant rounded-lg bg-white outline-none text-sm focus:border-secondary"
+                  />
                 </div>
               </div>
 
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-on-surface-variant">Tipo de Imóvel</label>
-                <select
-                  value={propertyType}
-                  onChange={(e) => setPropertyType(e.target.value)}
-                  className="h-11 px-3 border border-outline-variant rounded-lg bg-white text-sm outline-none"
-                >
-                  <option value="">Selecione um tipo...</option>
-                  <option>Apartamento</option>
-                  <option>Casa</option>
-                  <option>Sobrado</option>
-                  <option>Terreno</option>
-                  <option>Comercial</option>
-                </select>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-on-surface-variant">Bairro de Interesse</label>
+                  <input
+                    type="text"
+                    value={neighborhoodOfInterest}
+                    onChange={(e) => setNeighborhoodOfInterest(e.target.value)}
+                    placeholder="Ex: Copacabana, Ipanema"
+                    className="h-11 px-3 border border-outline-variant rounded-lg bg-white outline-none text-sm focus:border-secondary"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-on-surface-variant">Faixa de Orçamento</label>
+                  <input
+                    type="text"
+                    value={budgetRange}
+                    onChange={(e) => setBudgetRange(e.target.value)}
+                    placeholder="Ex: R$ 500k - R$ 800k"
+                    className="h-11 px-3 border border-outline-variant rounded-lg bg-white outline-none text-sm focus:border-secondary"
+                  />
+                </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider text-[11px] block">Orçamento Estimado</label>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs text-on-surface-variant">Mínimo (R$)</label>
-                    <input
-                      type="number"
-                      placeholder="R$ 0"
-                      value={minBudget}
-                      onChange={(e) => setMinBudget(e.target.value)}
-                      className="h-11 px-3 border border-outline-variant rounded-lg bg-white outline-none text-sm"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs text-on-surface-variant">Máximo (R$)</label>
-                    <input
-                      type="number"
-                      placeholder="R$ 0"
-                      value={maxBudget}
-                      onChange={(e) => setMaxBudget(e.target.value)}
-                      className="h-11 px-3 border border-outline-variant rounded-lg focus:border-secondary outline-none text-sm"
-                    />
-                  </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-on-surface-variant">Origem do Lead</label>
+                  <select
+                    value={leadSource}
+                    onChange={(e) => setLeadSource(e.target.value)}
+                    className="h-11 px-3 border border-outline-variant bg-white rounded-lg text-sm outline-none"
+                  >
+                    <option value="Indicação">Indicação</option>
+                    <option value="Instagram">Instagram</option>
+                    <option value="Facebook">Facebook</option>
+                    <option value="OLX">OLX</option>
+                    <option value="Portal Imobiliário">Portal Imobiliário</option>
+                    <option value="Placa">Placa</option>
+                    <option value="WhatsApp">WhatsApp</option>
+                    <option value="Tráfego Pago">Tráfego Pago</option>
+                    <option value="Outro">Outro</option>
+                  </select>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-on-surface-variant">Temperatura do Lead</label>
+                  <select
+                    value={temperature}
+                    onChange={(e) => setTemperature(e.target.value as any)}
+                    className="h-11 px-3 border border-outline-variant bg-white rounded-lg text-sm outline-none"
+                  >
+                    <option value="Frio">Frio</option>
+                    <option value="Morno">Morno</option>
+                    <option value="Quente">Quente</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-on-surface-variant">Próxima Ação Planejada</label>
+                  <input
+                    type="text"
+                    value={nextAction}
+                    onChange={(e) => setNextAction(e.target.value)}
+                    placeholder="Ex: Enviar opções do Jardim Oceânico"
+                    className="h-11 px-3 border border-outline-variant rounded-lg bg-white outline-none text-sm focus:border-secondary"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-on-surface-variant">Data do Próximo Follow-up</label>
+                  <input
+                    type="date"
+                    value={nextFollowUpDate}
+                    onChange={(e) => setNextFollowUpDate(e.target.value)}
+                    className="h-11 px-3 border border-outline-variant rounded-lg bg-white outline-none text-sm focus:border-secondary"
+                  />
                 </div>
               </div>
             </div>

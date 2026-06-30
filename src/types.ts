@@ -1,13 +1,14 @@
 export interface Property {
   id?: string;
   _id?: string;
+  userId?: string; // Partitioning key
   code?: string; // Unique random code (e.g. IM-XXXX)
   ownerId?: string; // Reference to owner (Client)
   title: string;
   type: string; // 'Apartamento' | 'Casa' | 'Sobrado' | 'Terreno' | 'Comercial'
   condition: string; // 'Novo' | 'Usado'
   description: string;
-  modality: string; // 'Venda' | 'Aluguel' | 'Temporada'
+  modality: string; // 'Venda' | 'Aluguel' | 'Ambos'
   price: number;
   condo: number;
   iptu: number;
@@ -29,27 +30,37 @@ export interface Property {
   photos: string[];
   videoLink?: string; // YouTube or social media post link
   amenities: string[];
-  status: string; // 'DISPONÍVEL' | 'EM PROPOSTA' | 'VENDIDO' | 'ALUGADO'
+  status: string; // 'Disponível' | 'Reservado' | 'Em Negociação' | 'Vendido' | 'Alugado' | 'Inativo'
   captadorName?: string;
   captadorPhone?: string;
+  estimatedCommission?: number; // Estimated commission in % or absolute BRL
   createdAt?: string;
 }
 
 export interface Client {
   id?: string;
   _id?: string;
+  userId?: string; // Partitioning key
   clientType?: "PF" | "PJ"; // PF = Pessoa Física, PJ = Pessoa Jurídica
   name: string;
   phone: string;
   document: string;
   email: string;
-  profileType: string; // 'Lead' | 'Comprador' | 'Locatário' | 'Proprietário'
-  objective: string; // 'Venda' | 'Aluguel' | 'Temporada'
+  profileType: string; // 'Lead' | 'Comprador' | 'Vendedor' | 'Locador' | 'Locatário' | 'Investidor'
+  objective: string; // Legacy objective
+  leadSource?: string; // 'Indicação' | 'Instagram' | 'Facebook' | 'OLX' | 'Portal Imobiliário' | 'Placa' | 'WhatsApp' | 'Tráfego Pago' | 'Outro'
+  interest?: string; // 'Compra' | 'Venda' | 'Locação' | 'Avaliação' | 'Investimento'
+  budgetRange?: string; // Faixa de orçamento (e.g. "R$ 300.000 - R$ 500.000")
+  neighborhoodOfInterest?: string; // Bairro de interesse
+  desiredPropertyType?: string; // Tipo de imóvel desejado (e.g. "Apartamento 3 quartos")
+  status: string; // Status de atendimento: 'Novo' | 'Em Atendimento' | 'Proposta' | 'Contrato' | 'Ganho' | 'Perdido'
+  temperature?: "Frio" | "Morno" | "Quente"; // Temperature of lead
+  nextAction?: string; // Próxima ação a ser realizada
+  nextFollowUpDate?: string; // Data do próximo follow-up (YYYY-MM-DD)
   propertyType: string;
   minBudget: number;
   maxBudget: number;
   observations: string;
-  status: string; // 'Novo' | 'Em Atendimento' | 'Proposta' | 'Ganho' | 'Perdido'
   birthday?: string; // YYYY-MM-DD
   address?: string; // Client address
   pipelineStatus?: string; // Funnel stage: Em Atendimento, Em Visita, Em Proposta, Fase de Contrato, Contrato Assinado, Fase de Documentação, Finalização do Processo
@@ -57,9 +68,42 @@ export interface Client {
   createdAt?: string;
 }
 
+export interface Proposal {
+  id?: string;
+  _id?: string;
+  userId?: string;
+  clientId: string;
+  clientName: string;
+  propertyId: string;
+  propertyTitle: string;
+  proposedValue: number;
+  status: "Pendente" | "Aceita" | "Recusada" | "Em Análise";
+  date: string; // YYYY-MM-DD
+  observations: string;
+  nextAction?: string;
+  createdAt?: string;
+}
+
+export interface Visit {
+  id?: string;
+  _id?: string;
+  userId?: string;
+  clientId: string;
+  clientName: string;
+  propertyId: string;
+  propertyTitle: string;
+  date: string; // YYYY-MM-DD
+  time: string; // HH:MM
+  status: "Agendada" | "Realizada" | "Cancelada";
+  observations: string;
+  feedback?: string;
+  createdAt?: string;
+}
+
 export interface Task {
   id?: string;
   _id?: string;
+  userId?: string; // Partitioning key
   date: string; // YYYY-MM-DD
   time: string; // HH:MM
   title: string;
@@ -86,5 +130,10 @@ export interface User {
   avatarUrl: string;
   role?: string;
   phone?: string;
+  onboardingCompleted?: boolean;
+  commercialName?: string;
+  creci?: string;
+  primaryCity?: string;
+  actingType?: "Venda" | "Locação" | "Lançamentos" | "Usados" | "Alto padrão" | "Minha Casa Minha Vida" | "Geral";
 }
 

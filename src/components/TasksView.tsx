@@ -191,10 +191,10 @@ export default function TasksView({
               </span>
               <span className="font-display text-sm block mt-1.5 font-semibold">
                 {totalCount === 0 
-                  ? "Dia Livre!" 
+                  ? "Nenhum compromisso pendente hoje" 
                   : completedCount === totalCount 
-                  ? "Todas Concluídas! 🎉" 
-                  : `${totalCount - completedCount} tarefas restantes`}
+                  ? "Tudo em dia por hoje! Nenhum follow-up esquecido. 🎉" 
+                  : `${totalCount - completedCount} compromissos restantes`}
               </span>
             </div>
           </section>
@@ -279,8 +279,8 @@ export default function TasksView({
               ) : (
                 <div className="flex flex-col items-center justify-center text-center py-12 text-on-surface-variant bg-surface-container-low rounded-xl border border-dashed border-outline-variant/40 ml-10">
                   <ListChecks className="w-8 h-8 text-outline-variant stroke-[1.5] mb-2" />
-                  <p className="font-bold text-xs">Sem tarefas para este dia</p>
-                  <p className="text-[10px] opacity-75 mt-0.5">Clique no botão (+) para agendar um compromisso.</p>
+                  <p className="font-bold text-xs">Sem compromissos ou follow-ups agendados para este dia</p>
+                  <p className="text-[10px] opacity-75 mt-0.5">Nenhum follow-up perdido. Agende um novo compromisso para manter contato constante com seus leads.</p>
                 </div>
               )}
             </div>
@@ -298,7 +298,7 @@ export default function TasksView({
         /* ADICIONAR TAREFA FORM VIEW */
         <div className="bg-surface-container-lowest rounded-2xl p-6 border border-outline-variant/30 shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-300">
           <header className="flex justify-between items-center pb-4 border-b border-outline-variant mb-6">
-            <h2 className="font-display text-headline-lg-mobile text-primary">Nova Tarefa</h2>
+            <h2 className="font-display text-headline-lg-mobile text-primary">Agendar Novo Compromisso</h2>
             <button
               onClick={() => setShowAddForm(false)}
               className="p-1.5 rounded-full hover:bg-surface-container-high transition-colors text-on-surface-variant"
@@ -362,7 +362,7 @@ export default function TasksView({
               <label className="text-xs font-semibold text-on-surface-variant">Nome do Cliente</label>
               <input
                 type="text"
-                placeholder="Ex: Ricardo Albuquerque"
+                placeholder="Ex: Ricardo Albuquerque (ou selecione na ficha do cliente)"
                 value={clientName}
                 onChange={(e) => setClientName(e.target.value)}
                 className="h-11 px-3 border border-outline-variant rounded-lg bg-white outline-none text-sm"
@@ -373,7 +373,7 @@ export default function TasksView({
               <label className="text-xs font-semibold text-on-surface-variant">Descrição / Observações</label>
               <textarea
                 rows={3}
-                placeholder="Escreva anotações importantes ou preparativos para esta atividade..."
+                placeholder="Descreva o objetivo da atividade (ex: follow-up de proposta, envio de fotos por WhatsApp, visita ao imóvel...)"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 className="p-3 border border-outline-variant rounded-lg bg-white outline-none text-sm resize-none"
