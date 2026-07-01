@@ -275,11 +275,56 @@ export default function ClientsView({
 
           {/* Empty fallback */}
           {filteredClients.length === 0 && (
-            <div className="flex flex-col items-center justify-center text-center py-16 text-on-surface-variant bg-surface-container-low rounded-2xl border border-dashed border-outline-variant/50">
-              <UserPlus className="w-12 h-12 text-outline-variant stroke-[1] mb-3" />
-              <p className="font-bold">Nenhum lead ou cliente encontrado</p>
-              <p className="text-xs opacity-80 mt-1 max-w-xs">Busque por outro termo ou cadastre um novo cliente para organizar seus follow-ups.</p>
-            </div>
+            clients.length === 0 ? (
+              <div className="flex flex-col items-center justify-center text-center py-20 px-6 text-on-surface-variant bg-surface-container-low rounded-3xl border border-dashed border-outline-variant/60 shadow-sm animate-in fade-in duration-300 max-w-2xl mx-auto my-4">
+                <div className="w-16 h-16 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-5 shadow-inner">
+                  <UserPlus className="w-8 h-8 stroke-[1.5]" />
+                </div>
+                <h3 className="font-display text-xl font-bold text-on-surface tracking-tight">
+                  Você ainda não cadastrou nenhum lead.
+                </h3>
+                <p className="text-sm opacity-90 mt-2 max-w-md leading-relaxed">
+                  Cadastre seu primeiro lead e defina um follow-up para não perder a oportunidade.
+                </p>
+                <button
+                  onClick={() => setShowAddForm(true)}
+                  className="mt-6 px-6 py-3 bg-primary hover:bg-primary/95 text-on-primary font-bold text-sm rounded-xl transition-all shadow-md active:scale-95 flex items-center gap-2 hover:shadow-lg cursor-pointer"
+                >
+                  <Plus className="w-4 h-4 stroke-[2.5]" />
+                  Cadastrar lead
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center text-center py-16 px-6 text-on-surface-variant bg-surface-container-low rounded-3xl border border-dashed border-outline-variant/40 shadow-sm animate-in fade-in duration-200">
+                <div className="w-12 h-12 rounded-full bg-on-surface-variant/10 text-on-surface-variant flex items-center justify-center mb-4">
+                  <Search className="w-6 h-6 stroke-[1.5]" />
+                </div>
+                <h3 className="font-display text-base font-bold text-on-surface">
+                  Nenhum lead ou cliente encontrado
+                </h3>
+                <p className="text-xs opacity-80 mt-1 max-w-sm leading-relaxed">
+                  Não encontramos correspondência para os filtros ou busca atual. Tente alterar os termos ou limpe a seleção.
+                </p>
+                <div className="flex gap-2.5 mt-5">
+                  <button
+                    onClick={() => {
+                      setSearch("");
+                      setFilter("Todos");
+                    }}
+                    className="px-4 py-2 bg-white hover:bg-surface-container text-primary border border-outline-variant rounded-lg text-xs font-bold transition-all active:scale-[0.97] cursor-pointer shadow-sm"
+                  >
+                    Limpar filtros
+                  </button>
+                  <button
+                    onClick={() => setShowAddForm(true)}
+                    className="px-4 py-2 bg-primary hover:bg-primary/95 text-on-primary rounded-lg text-xs font-bold transition-all active:scale-[0.97] flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                    Novo lead
+                  </button>
+                </div>
+              </div>
+            )
           )}
 
           {/* Floating Action Button for adding client */}
@@ -508,15 +553,22 @@ export default function ClientsView({
                     onChange={(e) => setLeadSource(e.target.value)}
                     className="h-11 px-3 border border-outline-variant bg-white rounded-lg text-sm outline-none"
                   >
-                    <option value="Indicação">Indicação</option>
-                    <option value="Instagram">Instagram</option>
-                    <option value="Facebook">Facebook</option>
-                    <option value="OLX">OLX</option>
-                    <option value="Portal Imobiliário">Portal Imobiliário</option>
-                    <option value="Placa">Placa</option>
-                    <option value="WhatsApp">WhatsApp</option>
-                    <option value="Tráfego Pago">Tráfego Pago</option>
-                    <option value="Outro">Outro</option>
+                    {(currentUser?.leadSources && currentUser.leadSources.length > 0
+                      ? currentUser.leadSources
+                      : [
+                          "Indicação",
+                          "Instagram",
+                          "Facebook",
+                          "OLX",
+                          "Portal Imobiliário",
+                          "Placa",
+                          "WhatsApp",
+                          "Tráfego Pago",
+                          "Outro"
+                        ]
+                    ).map((src) => (
+                      <option key={src} value={src}>{src}</option>
+                    ))}
                   </select>
                 </div>
 

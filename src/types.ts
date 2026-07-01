@@ -33,7 +33,8 @@ export interface Property {
   status: string; // 'Disponível' | 'Reservado' | 'Em Negociação' | 'Vendido' | 'Alugado' | 'Inativo'
   captadorName?: string;
   captadorPhone?: string;
-  estimatedCommission?: number; // Estimated commission in % or absolute BRL
+  estimatedCommission?: number; // Estimated commission in absolute BRL
+  commissionPercent?: number; // Estimated commission percentage (%)
   createdAt?: string;
 }
 
@@ -79,6 +80,7 @@ export interface Client {
   commissionForecast?: number; // Previsão de comissão (BRL)
   commissionPercent?: number; // Porcentagem de comissão (%)
   potentialValue?: number; // Valor potencial do negócio (BRL)
+  closingProbability?: "Baixa" | "Média" | "Alta"; // Probabilidade de fechamento
   history?: HistoryEntry[];
 }
 
@@ -138,6 +140,14 @@ export interface DBStatus {
   geminiActive: boolean;
 }
 
+export interface MessageTemplates {
+  primeiroContato?: string;
+  followUp?: string;
+  confirmacaoVisita?: string;
+  posVisita?: string;
+  proposta?: string;
+}
+
 export interface User {
   id?: string;
   _id?: string;
@@ -152,5 +162,11 @@ export interface User {
   creci?: string;
   primaryCity?: string;
   actingType?: "Venda" | "Locação" | "Lançamentos" | "Usados" | "Alto padrão" | "Minha Casa Minha Vida" | "Geral";
+  defaultCommissionPercent?: number; // Default commission percentage for properties and clients
+  pipelineStages?: string[]; // Custom pipeline stages
+  leadSources?: string[]; // Custom lead sources
+  messageTemplates?: MessageTemplates; // Custom message templates
+  isDemo?: boolean; // Demo mode flag
+  sessionToken?: string; // Session token
 }
 

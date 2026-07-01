@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { LayoutDashboard, Home, Users, CalendarDays, Bell, Sparkles, Search, X, FolderSync, Handshake } from "lucide-react";
+import { LayoutDashboard, Home, Users, CalendarDays, Bell, Sparkles, Search, X, FolderSync, Handshake, Settings, ClipboardCheck } from "lucide-react";
 import { Property, Client, Task, DBStatus, User, Proposal, Visit } from "./types";
 import DashboardView from "./components/DashboardView";
 import PropertiesView from "./components/PropertiesView";
@@ -8,6 +8,8 @@ import ClientsView from "./components/ClientsView";
 import TasksView from "./components/TasksView";
 import PipelineView from "./components/PipelineView";
 import TransactionsView from "./components/TransactionsView";
+import SettingsView from "./components/SettingsView";
+import ChecklistView from "./components/ChecklistView";
 import PropertyModal from "./components/PropertyModal";
 import ClientModal from "./components/ClientModal";
 import LoginView from "./components/LoginView";
@@ -389,6 +391,16 @@ export default function App() {
     }
   };
 
+  const handleResetDemoData = async () => {
+    try {
+      await apiFetch("/api/demo/reset", { method: "POST" });
+      await fetchData();
+      alert("Dados de demonstração resetados com sucesso! Todos os leads, imóveis, tarefas, visitas e propostas fictícias foram restaurados para o estado original.");
+    } catch (err) {
+      console.error("Erro ao resetar dados demo:", err);
+    }
+  };
+
   if (checkingAuth) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -420,6 +432,23 @@ export default function App() {
 
   return (
     <div className="bg-background min-h-screen text-on-surface font-sans flex flex-col pb-28 md:pb-6">
+      {currentUser?.isDemo && (
+        <div className="bg-amber-500/10 border-b border-amber-500/20 text-amber-800 dark:text-amber-300 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm font-medium sticky top-0 z-50 backdrop-blur-md">
+          <div className="flex items-center gap-2">
+            <span className="flex h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+            <span>
+              <strong>Você está no modo demonstração profissional.</strong> Alterações feitas aqui são armazenadas localmente no seu navegador e não afetam dados reais de produção.
+            </span>
+          </div>
+          <button
+            onClick={handleResetDemoData}
+            className="px-3 py-1 bg-amber-500 hover:bg-amber-600 active:scale-[0.97] text-white font-bold text-xs rounded-lg transition-all shadow-sm cursor-pointer whitespace-nowrap"
+          >
+            Resetar Dados Demo
+          </button>
+        </div>
+      )}
+      
       {currentUser && !currentUser.onboardingCompleted && (
         <OnboardingModal user={currentUser} onComplete={handleOnboardingComplete} />
       )}
@@ -583,6 +612,20 @@ export default function App() {
 
         {/* Action icons & Profile */}
         <div className="flex items-center gap-3 shrink-0">
+          {/* Checklist de Lançamento Button */}
+          <button 
+            onClick={() => setActiveTab("checklist")}
+            className={`px-3 py-1.5 rounded-full transition-all flex items-center gap-1.5 cursor-pointer text-xs font-bold border ${
+              activeTab === "checklist"
+                ? "bg-primary border-primary text-on-primary shadow-sm"
+                : "bg-surface-container-high border-outline-variant/30 hover:bg-surface-container-highest text-primary"
+            }`}
+            title="Checklist de Lançamento"
+          >
+            <ClipboardCheck className="w-4 h-4 shrink-0" />
+            <span className="hidden sm:inline">Checklist Lançamento</span>
+          </button>
+
           <button className="p-2 rounded-full hover:bg-surface-container-high transition-colors text-on-surface-variant relative">
             <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-secondary"></span>
             <Bell className="w-5 h-5" />
@@ -590,7 +633,7 @@ export default function App() {
           
           {/* Agent Headshot */}
           <button
-            onClick={() => setShowProfileModal(true)}
+            onClick={() => setActiveTab("settings")}
             className="w-9 h-9 rounded-full overflow-hidden border border-primary/20 bg-primary/10 hover:ring-2 hover:ring-primary/40 hover:scale-105 transition-all cursor-pointer"
             title="Configurações de Perfil"
           >
@@ -741,8 +784,52 @@ export default function App() {
               />
             </motion.div>
           )}
+
+          {activeTab === "settings" && (
+            <motion.div
+              key="settings"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <SettingsView
+                currentUser={currentUser}
+                onUpdateSuccess={(updatedUser) => {
+                  localStorage.setItem("vega_crm_user", JSON.stringify(updatedUser));
+                  setCurrentUser(updatedUser);
+                }}
+                onLogout={async () => {
+                  try {
+                    await apiFetch("/api/auth/logout", { method: "POST" });
+                  } catch (err) {
+                    console.error("Erro ao realizar logout:", err);
+                  }
+                  localStorage.removeItem("vega_crm_user");
+                  setCurrentUser(null);
+                }}
+              />
+            </motion.div>
+          )}
+
+          {activeTab === "checklist" && (
+            <motion.div
+              key="checklist"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <ChecklistView />
+            </motion.div>
+          )}
         </AnimatePresence>
       </main>
+
+      {/* Elegant Beta Footer */}
+      <footer className="w-full text-center py-6 pb-20 md:pb-10 text-[11px] text-on-surface-variant/60 font-medium tracking-wide border-t border-outline-variant/10 max-w-4xl mx-auto px-4 mt-auto">
+        Metria CRM Beta — versão inicial para corretores parceiros.
+      </footer>
 
       {/* Bottom Sticky Navigation (for Mobile and compact layouts) */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 bg-surface/95 backdrop-blur-md border-t border-outline-variant flex justify-around items-center py-2 pb-safe rounded-t-2xl shadow-[0_-4px_16px_rgba(0,53,39,0.06)] md:hidden">
@@ -823,6 +910,19 @@ export default function App() {
           <Handshake className="w-5 h-5 stroke-[2]" />
           <span className="text-[10px] mt-1 font-semibold">Propostas</span>
         </button>
+
+        {/* Settings Link */}
+        <button
+          onClick={() => setActiveTab("settings")}
+          className={`flex flex-col items-center justify-center px-4 py-1.5 rounded-xl transition-all cursor-pointer ${
+            activeTab === "settings"
+              ? "bg-secondary-container text-on-secondary-container scale-105 font-bold"
+              : "text-on-surface-variant hover:bg-surface-container-high"
+          }`}
+        >
+          <Settings className="w-5 h-5 stroke-[2]" />
+          <span className="text-[10px] mt-1 font-semibold">Ajustes</span>
+        </button>
       </nav>
 
       {/* Desktop Sidebar Sidebar Navigation (visible on large viewports) */}
@@ -881,6 +981,24 @@ export default function App() {
         >
           <Handshake className="w-5 h-5" />
         </button>
+        <button
+          onClick={() => setActiveTab("checklist")}
+          className={`p-3 rounded-xl transition-all tooltip cursor-pointer ${
+            activeTab === "checklist" ? "bg-primary text-on-primary" : "text-on-surface-variant hover:bg-surface-container"
+          }`}
+          title="Checklist de Lançamento"
+        >
+          <ClipboardCheck className="w-5 h-5" />
+        </button>
+        <button
+          onClick={() => setActiveTab("settings")}
+          className={`p-3 rounded-xl transition-all tooltip cursor-pointer ${
+            activeTab === "settings" ? "bg-primary text-on-primary" : "text-on-surface-variant hover:bg-surface-container"
+          }`}
+          title="Configurações do CRM"
+        >
+          <Settings className="w-5 h-5" />
+        </button>
       </div>
 
       {/* Property Details Modal */}
@@ -902,6 +1020,7 @@ export default function App() {
         {selectedClient && (
           <ClientModal
             client={selectedClient}
+            properties={properties}
             tasks={tasks}
             proposals={proposals}
             visits={visits}

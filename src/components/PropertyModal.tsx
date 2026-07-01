@@ -2,7 +2,8 @@ import React, { useState } from "react";
 import { motion } from "motion/react";
 import { Property, Client } from "../types";
 import { apiFetch } from "../api";
-import { X, Bed, Square, Shield, PenTool, Trash2, Sparkles, Loader2, Save, MapPin, DollarSign, Home, Check, Upload, Video, Film, Trash, ExternalLink } from "lucide-react";
+import { getMatchingClients } from "../utils/matching";
+import { X, Bed, Square, Shield, PenTool, Trash2, Sparkles, Loader2, Save, MapPin, DollarSign, Home, Check, Upload, Video, Film, Trash, ExternalLink, MessageSquare, Copy, Star } from "lucide-react";
 
 interface PropertyModalProps {
   property: Property;
@@ -82,6 +83,12 @@ export default function PropertyModal({ property, clients = [], onClose, onUpdat
     return null;
   });
   const [isCopied, setIsCopied] = useState(false);
+  const [aiVersions, setAiVersions] = useState<{ professional: string; whatsapp: string; portal: string } | null>(null);
+  const [activeAiTab, setActiveAiTab] = useState<"professional" | "whatsapp" | "portal">("professional");
+  const [copiedTab, setCopiedTab] = useState<string | null>(null);
+  const [editedProfessional, setEditedProfessional] = useState("");
+  const [editedWhatsapp, setEditedWhatsapp] = useState("");
+  const [editedPortal, setEditedPortal] = useState("");
 
   const generateMessageText = () => {
     const p = property;
@@ -153,7 +160,33 @@ ${p.description || "Consulte-me para mais informações sobre este imóvel fant�
   const [ownerId, setOwnerId] = useState(property.ownerId || "");
   const [captadorName, setCaptadorName] = useState(property.captadorName || "");
   const [captadorPhone, setCaptadorPhone] = useState(property.captadorPhone || "");
-  const [estimatedCommission, setEstimatedCommission] = useState(property.estimatedCommission || 0);
+  
+  const [commissionPercent, setCommissionPercent] = useState<number>(() => {
+    if (property.commissionPercent !== undefined) return property.commissionPercent;
+    if (property.estimatedCommission !== undefined && property.estimatedCommission <= 100) return property.estimatedCommission;
+    return currentUser?.defaultCommissionPercent !== undefined ? currentUser.defaultCommissionPercent : 5;
+  });
+
+  const [estimatedCommission, setEstimatedCommission] = useState<number>(() => {
+    if (property.estimatedCommission !== undefined) {
+      if (property.estimatedCommission > 100) return property.estimatedCommission;
+      const pct = property.commissionPercent !== undefined ? property.commissionPercent : property.estimatedCommission;
+      return Math.floor((property.price || 0) * pct / 100);
+    }
+    const defaultPct = currentUser?.defaultCommissionPercent !== undefined ? currentUser.defaultCommissionPercent : 5;
+    return Math.floor((property.price || 0) * defaultPct / 100);
+  });
+
+  const handlePriceChange = (val: number) => {
+    setPrice(val);
+    setEstimatedCommission(Math.floor(val * commissionPercent / 100));
+  };
+
+  const handleCommissionPercentChange = (val: number) => {
+    setCommissionPercent(val);
+    setEstimatedCommission(Math.floor(price * val / 100));
+  };
+
   const [selectedAmenities, setSelectedAmenities] = useState<string[]>(property.amenities || []);
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
   const [uploadedPhotos, setUploadedPhotos] = useState<string[]>(property.photos || []);
@@ -178,11 +211,29 @@ ${p.description || "Consulte-me para mais informações sobre este imóvel fant�
     setIsUploadingPhotos(true);
     try {
       const compressedPromises = filesArray.map(file => compressImage(file as File));
-      const results = await Promise.all(compressedPromises);
-      setUploadedPhotos(prev => [...prev, ...results]);
-    } catch (err) {
+      const base64Results = await Promise.all(compressedPromises);
+      
+      const uploadPromises = base64Results.map(async (dataUrl) => {
+        const response = await apiFetch("/api/upload", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ dataUrl })
+        });
+        if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.error || "Erro no upload.");
+        }
+        const data = await response.json();
+        return data.url;
+      });
+
+      const serverUrls = await Promise.all(uploadPromises);
+      setUploadedPhotos(prev => [...prev, ...serverUrls]);
+    } catch (err: any) {
       console.error("Erro ao carregar fotos:", err);
-      alert("Houve um erro ao processar as fotos selecionadas.");
+      alert(`Houve um erro ao processar as fotos selecionadas: ${err.message || err}`);
     } finally {
       setIsUploadingPhotos(false);
       if (e.target) e.target.value = "";
@@ -217,19 +268,27 @@ ${p.description || "Consulte-me para mais informações sobre este imóvel fant�
           modality,
           neighborhood,
           city,
+          price,
           bedrooms,
           suites,
           bathrooms,
+          parkingSpots,
           area,
           amenities: selectedAmenities
         })
       });
       
       const data = await response.json();
-      if (data.description) {
-        setDescription(data.description);
+      if (data.professional && data.whatsapp && data.portal) {
+        setAiVersions(data);
+        setEditedProfessional(data.professional);
+        setEditedWhatsapp(data.whatsapp);
+        setEditedPortal(data.portal);
+        setActiveAiTab("professional");
       } else if (data.error) {
         alert(data.error);
+      } else {
+        alert("Ocorreu um erro ao formatar a resposta da IA.");
       }
     } catch (err) {
       console.error(err);
@@ -273,6 +332,7 @@ ${p.description || "Consulte-me para mais informações sobre este imóvel fant�
         captadorName,
         captadorPhone,
         estimatedCommission: Number(estimatedCommission),
+        commissionPercent: Number(commissionPercent),
         photos: uploadedPhotos,
         videoLink: videoLink || undefined,
         amenities: selectedAmenities
@@ -615,9 +675,34 @@ ${p.description || "Consulte-me para mais informações sobre este imóvel fant�
                     <p className="text-[10px] text-on-surface-variant uppercase font-bold">Aceita Permuta?</p>
                     <p className="font-semibold text-on-surface text-sm mt-0.5">{property.acceptsExchange ? "Sim" : "Não"}</p>
                   </div>
-                  <div className="p-2.5 bg-white rounded-lg border border-outline-variant/10 shadow-sm">
-                    <p className="text-[10px] text-on-surface-variant uppercase font-bold">Comissão Estimada (%)</p>
-                    <p className="font-semibold text-emerald-600 text-sm mt-0.5">{property.estimatedCommission ? `${property.estimatedCommission}%` : "Não informada"}</p>
+                  <div className="p-2.5 bg-white rounded-lg border border-outline-variant/10 shadow-sm col-span-1 sm:col-span-2 md:col-span-1">
+                    <p className="text-[10px] text-on-surface-variant uppercase font-bold">Comissão Prevista</p>
+                    <div className="mt-0.5">
+                      {(() => {
+                        const pct = property.commissionPercent !== undefined 
+                          ? property.commissionPercent 
+                          : (property.estimatedCommission !== undefined && property.estimatedCommission <= 100 ? property.estimatedCommission : undefined);
+                        
+                        const abs = property.estimatedCommission !== undefined && property.estimatedCommission > 100
+                          ? property.estimatedCommission
+                          : (property.price && pct ? Math.floor(property.price * pct / 100) : undefined);
+
+                        if (pct !== undefined || abs !== undefined) {
+                          return (
+                            <div className="flex flex-col">
+                              <span className="font-semibold text-emerald-600 text-sm">
+                                {abs !== undefined ? `R$ ${abs.toLocaleString("pt-BR")}` : "---"}
+                                {pct !== undefined ? ` (${pct}%)` : ""}
+                              </span>
+                              <span className="text-[9px] text-on-surface-variant font-medium italic mt-0.5 block">
+                                Estimativa prévia
+                              </span>
+                            </div>
+                          );
+                        }
+                        return <span className="font-semibold text-on-surface text-sm">Não informada</span>;
+                      })()}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -647,6 +732,127 @@ ${p.description || "Consulte-me para mais informações sobre este imóvel fant�
                   </div>
                 </div>
               )}
+
+              {/* Clientes Compatíveis Matching Section */}
+              <div className="space-y-3 pt-4 border-t border-outline-variant/30 text-left">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-title-md text-primary text-body-lg flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-emerald-600 animate-pulse" />
+                    Clientes Potenciais Compatíveis
+                  </h4>
+                  <span className="text-[10px] text-on-surface-variant bg-emerald-500/10 px-2 py-0.5 rounded-full font-bold">
+                    {getMatchingClients(property, clients).length} Leads Compatíveis
+                  </span>
+                </div>
+
+                {(() => {
+                  const matches = getMatchingClients(property, clients);
+                  if (matches.length === 0) {
+                    return (
+                      <div className="p-4 bg-surface-container-low border border-outline-variant/20 rounded-xl text-center text-xs text-on-surface-variant font-medium">
+                        Nenhum cliente cadastrado atende aos requisitos mínimos deste imóvel no momento. Cadastre novos leads ou ajuste os interesses de seus clientes atuais.
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+                      {matches.slice(0, 4).map(({ client, score, reasons }) => {
+                        const formattedPrice = (property.price || 0).toLocaleString("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
+                          maximumFractionDigits: 0
+                        });
+
+                        // Pre-filled WhatsApp message about this property
+                        const cleanPhone = client.phone.replace(/\D/g, "");
+                        const whatsappPhone = cleanPhone.startsWith("55") ? cleanPhone : `55${cleanPhone}`;
+                        const messageText = `Olá, *${client.name}*! Tudo bem?
+Acabou de entrar em nossa carteira de imóveis do Metria CRM um(a) *${property.type}* excelente que combina perfeitamente com o seu perfil de busca:
+
+🏡 *${property.title}*
+📍 *Localização:* ${property.neighborhood || "Bairro não informado"}, ${property.city || "Cidade não informada"}
+💰 *Valor:* ${formattedPrice}
+📐 *Área:* ${property.area}m² | 🛏️ *Quartos:* ${property.bedrooms} | 🚿 *Banheiros:* ${property.bathrooms}
+
+Acredito que seja a oportunidade ideal para o que você procura. Gostaria de agendar uma visita essa semana?`;
+
+                        const whatsappUrl = `https://api.whatsapp.com/send?phone=${whatsappPhone}&text=${encodeURIComponent(messageText)}`;
+
+                        return (
+                          <div
+                            key={client.id || client._id}
+                            className="bg-white border border-outline-variant/35 p-3.5 rounded-xl hover:border-emerald-500/40 transition-all shadow-sm flex flex-col justify-between gap-3 text-xs"
+                          >
+                            <div className="flex justify-between items-start gap-2">
+                              <div>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-extrabold text-primary text-sm">
+                                    {client.name}
+                                  </span>
+                                  <span className="text-[9px] bg-indigo-100 text-indigo-800 font-bold px-1.5 py-0.5 rounded">
+                                    {client.profileType}
+                                  </span>
+                                  {client.temperature && (
+                                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                                      client.temperature === "Quente" ? "bg-red-100 text-red-800" :
+                                      client.temperature === "Frio" ? "bg-blue-100 text-blue-800" : "bg-orange-100 text-orange-800"
+                                    }`}>
+                                      {client.temperature}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[11px] text-on-surface-variant font-medium mt-0.5">
+                                  Interesse: <span className="font-bold text-on-surface">{client.interest || "Compra/Venda"}</span> • Prefere: <span className="font-bold text-on-surface">{client.neighborhoodOfInterest || "Qualquer Bairro"}</span>
+                                </p>
+                              </div>
+
+                              <div className="flex flex-col items-end flex-shrink-0">
+                                <span className={`text-[11px] font-black px-2.5 py-1 rounded-full border ${
+                                  score >= 80 ? "bg-emerald-100 text-emerald-800 border-emerald-200" :
+                                  score >= 60 ? "bg-amber-100 text-amber-800 border-amber-200" :
+                                  "bg-orange-100 text-orange-800 border-orange-200"
+                                }`}>
+                                  {score}% Compatível
+                                </span>
+                                <span className="text-[10px] text-on-surface-variant/70 font-bold mt-1">
+                                  Orçamento: R$ {(client.maxBudget || 0).toLocaleString("pt-BR")}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Motivos da recomendação */}
+                            <div className="bg-surface-container-lowest/50 p-2 rounded-lg border border-outline-variant/10 text-[10.5px]">
+                              <p className="font-bold text-primary mb-1 text-[9.5px] uppercase tracking-wider">Motivos de Compatibilidade:</p>
+                              <ul className="space-y-1">
+                                {reasons.map((reason, rIdx) => (
+                                  <li key={rIdx} className="flex items-start gap-1 text-on-surface-variant font-medium">
+                                    <span className="text-emerald-600 font-bold">✓</span>
+                                    <span>{reason}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+
+                            {/* Enviar WhatsApp */}
+                            <div className="flex justify-end pt-1">
+                              <a
+                                href={whatsappUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] px-3.5 py-2 rounded-lg shadow-sm transition-colors cursor-pointer"
+                              >
+                                <MessageSquare className="w-3.5 h-3.5" />
+                                Oferecer Imóvel pelo WhatsApp
+                              </a>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
 
               {/* Compartilhar & Assinatura Panel */}
               <div className="bg-primary/5 p-4 rounded-xl border border-primary/10 space-y-3">
@@ -790,7 +996,7 @@ ${p.description || "Consulte-me para mais informações sobre este imóvel fant�
                     <input
                       type="number"
                       value={price}
-                      onChange={(e) => setPrice(Number(e.target.value))}
+                      onChange={(e) => handlePriceChange(Number(e.target.value))}
                       required
                       className="h-11 px-3 border border-outline-variant rounded-lg focus:border-secondary outline-none bg-white text-sm"
                     />
@@ -981,15 +1187,31 @@ ${p.description || "Consulte-me para mais informações sobre este imóvel fant�
                       </select>
                     </div>
 
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs font-semibold text-on-surface-variant">Comissão Estimada (%)</label>
-                      <input
-                        type="number"
-                        placeholder="Ex: 5"
-                        value={estimatedCommission || ""}
-                        onChange={(e) => setEstimatedCommission(Number(e.target.value))}
-                        className="h-11 px-3 border border-outline-variant rounded-lg bg-white outline-none text-sm"
-                      />
+                    <div className="grid grid-cols-2 gap-3 col-span-1 sm:col-span-2 bg-emerald-500/5 p-3 rounded-lg border border-emerald-500/10">
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-semibold text-emerald-800 dark:text-emerald-400">Comissão (%)</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          placeholder="Ex: 5"
+                          value={commissionPercent !== undefined ? commissionPercent : ""}
+                          onChange={(e) => handleCommissionPercentChange(Number(e.target.value))}
+                          className="h-10 px-3 border border-outline-variant rounded-lg bg-white outline-none text-sm"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-semibold text-emerald-800 dark:text-emerald-400">Comissão Estimada (R$)</label>
+                        <input
+                          type="number"
+                          placeholder="Ex: 25000"
+                          value={estimatedCommission || ""}
+                          onChange={(e) => setEstimatedCommission(Number(e.target.value))}
+                          className="h-10 px-3 border border-outline-variant rounded-lg bg-white outline-none text-sm font-semibold text-emerald-700"
+                        />
+                      </div>
+                      <span className="text-[10px] text-on-surface-variant col-span-2 font-medium italic">
+                        ⚠️ Atenção: A comissão acima é apenas uma estimativa prévia do negócio.
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -1087,11 +1309,32 @@ ${p.description || "Consulte-me para mais informações sobre este imóvel fant�
                                 e.stopPropagation();
                                 setUploadedPhotos(prev => prev.filter((_, i) => i !== idx));
                               }}
-                              className="absolute top-1 right-1 p-1 bg-black/60 hover:bg-red-600 rounded-full text-white transition-all scale-90 group-hover:scale-100"
+                              className="absolute top-1 right-1 p-1 bg-black/60 hover:bg-red-600 rounded-full text-white transition-all scale-90 group-hover:scale-100 z-10"
                             >
                               <X className="w-3 h-3" />
                             </button>
-                            <span className="absolute bottom-0.5 left-0.5 bg-black/50 text-white px-1 py-0.2 rounded text-[8px] font-bold font-mono">
+                            {idx === 0 ? (
+                              <span className="absolute bottom-1 left-1 bg-emerald-500 text-white px-1 py-0.5 rounded text-[8px] font-bold flex items-center gap-0.5 shadow-sm z-10">
+                                <Star className="w-2.5 h-2.5 fill-current text-amber-300" /> Principal
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setUploadedPhotos(prev => {
+                                    const next = [...prev];
+                                    const [selected] = next.splice(idx, 1);
+                                    return [selected, ...next];
+                                  });
+                                }}
+                                className="absolute bottom-1 left-1 p-1 bg-black/55 hover:bg-emerald-500 rounded text-white transition-all opacity-0 group-hover:opacity-100 flex items-center gap-0.5 text-[8px] font-bold z-10"
+                                title="Definir como foto principal"
+                              >
+                                <Star className="w-2.5 h-2.5 text-amber-300" /> Principal
+                              </button>
+                            )}
+                            <span className="absolute bottom-1 right-1 bg-black/50 text-white px-1 py-0.2 rounded text-[8px] font-bold font-mono">
                               #{idx + 1}
                             </span>
                           </div>
@@ -1140,7 +1383,7 @@ ${p.description || "Consulte-me para mais informações sobre este imóvel fant�
                         ) : (
                           <>
                             <Sparkles className="w-3.5 h-3.5 text-secondary animate-pulse" />
-                            Melhorar com IA (Gemini)
+                            Gerar descrição com IA
                           </>
                         )}
                       </button>
@@ -1151,8 +1394,128 @@ ${p.description || "Consulte-me para mais informações sobre este imóvel fant�
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     className="p-3 border border-outline-variant rounded-lg focus:border-secondary outline-none bg-white text-sm resize-none"
-                    placeholder="Escreva detalhes adicionais ou clique em Melhorar com IA para gerar uma descrição vendedora automaticamente..."
+                    placeholder="Escreva detalhes adicionais ou clique em Gerar descrição com IA para criar versões vendedoras automaticamente..."
                   />
+
+                  {/* AI Generated Versions Panel */}
+                  {aiVersions && (
+                    <div className="mt-3 p-4 bg-emerald-500/5 rounded-xl border border-emerald-500/20 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 uppercase tracking-wider">
+                          <Sparkles className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
+                          Versões Geradas pela IA (Gemini)
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setAiVersions(null)}
+                          className="text-[10px] text-on-surface-variant/70 hover:text-red-600 font-bold transition-colors cursor-pointer"
+                        >
+                          Limpar sugestões
+                        </button>
+                      </div>
+                      
+                      {/* Tabs for different versions */}
+                      <div className="flex gap-1 border-b border-outline-variant/30 pb-2">
+                        {(["professional", "whatsapp", "portal"] as const).map((tab) => (
+                          <button
+                            key={tab}
+                            type="button"
+                            onClick={() => setActiveAiTab(tab)}
+                            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                              activeAiTab === tab
+                                ? "bg-emerald-600 text-white shadow-sm"
+                                : "text-on-surface-variant hover:bg-emerald-500/10 hover:text-emerald-950"
+                            }`}
+                          >
+                            {tab === "professional" && "💼 Profissional"}
+                            {tab === "whatsapp" && "💬 WhatsApp"}
+                            {tab === "portal" && "🌐 Portal"}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Selected tab content with textarea for direct editing */}
+                      <div className="space-y-3">
+                        <textarea
+                          rows={6}
+                          value={
+                            activeAiTab === "professional"
+                              ? editedProfessional
+                              : activeAiTab === "whatsapp"
+                              ? editedWhatsapp
+                              : editedPortal
+                          }
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (activeAiTab === "professional") setEditedProfessional(val);
+                            else if (activeAiTab === "whatsapp") setEditedWhatsapp(val);
+                            else setEditedPortal(val);
+                          }}
+                          className="w-full p-3 border border-emerald-500/20 rounded-lg focus:border-emerald-500 outline-none bg-white text-xs leading-relaxed"
+                          placeholder="Modifique a sugestão como desejar antes de copiar ou salvar..."
+                        />
+
+                        {/* Actions */}
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pt-1">
+                          <span className="text-[10px] text-emerald-800/80 font-medium italic">
+                            💡 Você pode editar o texto acima antes de copiar ou salvar no imóvel.
+                          </span>
+                          <div className="flex gap-2 w-full sm:w-auto justify-end">
+                            {/* Copy button */}
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const textToCopy =
+                                  activeAiTab === "professional"
+                                    ? editedProfessional
+                                    : activeAiTab === "whatsapp"
+                                    ? editedWhatsapp
+                                    : editedPortal;
+                                try {
+                                  await navigator.clipboard.writeText(textToCopy);
+                                  setCopiedTab(activeAiTab);
+                                  setTimeout(() => setCopiedTab(null), 2000);
+                                } catch (err) {
+                                  console.error("Erro ao copiar:", err);
+                                }
+                              }}
+                              className="flex items-center gap-1 bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-bold px-3 py-1.5 rounded-lg border border-outline-variant transition-colors cursor-pointer"
+                            >
+                              {copiedTab === activeAiTab ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5 text-emerald-600 font-bold" />
+                                  <span>Copiado!</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3.5 h-3.5 text-on-surface-variant" />
+                                  <span>Copiar</span>
+                                </>
+                              )}
+                            </button>
+
+                            {/* Save/Use button */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const textToUse =
+                                  activeAiTab === "professional"
+                                    ? editedProfessional
+                                    : activeAiTab === "whatsapp"
+                                    ? editedWhatsapp
+                                    : editedPortal;
+                                setDescription(textToUse);
+                              }}
+                              className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition-colors cursor-pointer"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              Salvar no Imóvel
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Amenities Selection */}

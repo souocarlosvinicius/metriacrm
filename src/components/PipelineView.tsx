@@ -47,28 +47,29 @@ const PIPELINE_STAGES = [
 ];
 
 // Normalize old pipeline status to new ones so no data is lost
-const normalizeStage = (stage?: string): string => {
-  if (!stage) return "Novo lead";
+const normalizeStage = (stage?: string, customStages?: string[]): string => {
+  const stagesList = customStages && customStages.length > 0 ? customStages : PIPELINE_STAGES;
+  if (!stage) return stagesList[0] || "Novo lead";
   const s = stage.trim();
   switch (s) {
     case "Em Atendimento":
-      return "Em atendimento";
+      return stagesList.includes("Em atendimento") ? "Em atendimento" : stagesList[0];
     case "Em Visita":
-      return "Visita agendada";
+      return stagesList.includes("Visita agendada") ? "Visita agendada" : stagesList[0];
     case "Em Proposta":
-      return "Proposta enviada";
+      return stagesList.includes("Proposta enviada") ? "Proposta enviada" : stagesList[0];
     case "Fase de Contrato":
-      return "Contrato";
+      return stagesList.includes("Contrato") ? "Contrato" : stagesList[0];
     case "Contrato Assinado":
-      return "Fechado";
+      return stagesList.includes("Fechado") ? "Fechado" : stagesList[0];
     case "Fase de Documentação":
-      return "Documentação";
+      return stagesList.includes("Documentação") ? "Documentação" : stagesList[0];
     case "Finalização do Processo":
-      return "Fechado";
+      return stagesList.includes("Fechado") ? "Fechado" : stagesList[0];
     default:
       // If it is already a valid stage, return it
-      if (PIPELINE_STAGES.includes(s)) return s;
-      return "Novo lead";
+      if (stagesList.includes(s)) return s;
+      return stagesList[0] || "Novo lead";
   }
 };
 
@@ -137,6 +138,10 @@ export default function PipelineView({
   onAddClient,
   currentUser
 }: PipelineViewProps) {
+  const stages = currentUser?.pipelineStages && currentUser.pipelineStages.length > 0
+    ? currentUser.pipelineStages
+    : PIPELINE_STAGES;
+
   const DEFAULT_TEMPLATES = {
     primeiroContato: "Olá, {{nome}}! Tudo bem? Aqui é {{corretor}}. Vi seu interesse em imóveis e queria entender melhor o que você procura para te enviar as melhores opções.",
     followUp: "Olá, {{nome}}! Passando para saber se você conseguiu avaliar as opções que te enviei. Posso te ajudar com alguma dúvida?",
@@ -181,9 +186,31 @@ export default function PipelineView({
     return template
       .replace(/\{\{nome\}\}/gi, name)
       .replace(/\{\{corretor\}\}/gi, corretor)
+      .replace(/\{\{imobiliaria\}\}/gi, currentUser?.commercialName || "")
       .replace(/\{\{imovel\}\}/gi, imovel)
       .replace(/\{\{data\}\}/gi, data)
       .replace(/\{\{hora\}\}/gi, hora);
+  };
+
+  const getRawTemplate = (key: "primeiroContato" | "followUp" | "confirmacaoVisita" | "enviarImovel" | "retomarAtendimento") => {
+    if (currentUser?.messageTemplates) {
+      if (key === "primeiroContato" && currentUser.messageTemplates.primeiroContato) {
+        return currentUser.messageTemplates.primeiroContato;
+      }
+      if (key === "followUp" && currentUser.messageTemplates.followUp) {
+        return currentUser.messageTemplates.followUp;
+      }
+      if (key === "confirmacaoVisita" && currentUser.messageTemplates.confirmacaoVisita) {
+        return currentUser.messageTemplates.confirmacaoVisita;
+      }
+      if (key === "enviarImovel" && currentUser.messageTemplates.posVisita) {
+        return currentUser.messageTemplates.posVisita;
+      }
+      if (key === "retomarAtendimento" && currentUser.messageTemplates.proposta) {
+        return currentUser.messageTemplates.proposta;
+      }
+    }
+    return whatsappTemplates[key] || DEFAULT_TEMPLATES[key];
   };
 
   const handleOpenWhatsAppAction = (client: Client, key: "primeiroContato" | "followUp" | "confirmacaoVisita" | "enviarImovel" | "retomarAtendimento") => {
@@ -195,7 +222,7 @@ export default function PipelineView({
     );
 
     const nameVal = client.name || "";
-    const brokerVal = currentUser?.commercialName || currentUser?.name || "seu corretor";
+    const brokerVal = currentUser?.name || "seu corretor";
     const propertyVal = linkedProp?.title || "imóvel de interesse";
     const dateVal = client.nextFollowUpDate 
       ? client.nextFollowUpDate.split("-").reverse().join("/") 
@@ -208,7 +235,7 @@ export default function PipelineView({
     setPData(dateVal);
     setPHora(hourVal);
 
-    const rawTemplate = whatsappTemplates[key] || DEFAULT_TEMPLATES[key];
+    const rawTemplate = getRawTemplate(key);
     const initialCompiled = compileMessage(rawTemplate, nameVal, brokerVal, propertyVal, dateVal, hourVal);
     setWhatsappMessageText(initialCompiled);
   };
@@ -228,7 +255,7 @@ export default function PipelineView({
     else if (field === "data") { setPData(val); d = val; }
     else if (field === "hora") { setPHora(val); h = val; }
 
-    const rawTemplate = whatsappTemplates[activeWhatsAppKey] || DEFAULT_TEMPLATES[activeWhatsAppKey];
+    const rawTemplate = getRawTemplate(activeWhatsAppKey);
     const recompiled = compileMessage(rawTemplate, n, c, i, d, h);
     setWhatsappMessageText(recompiled);
   };
@@ -322,7 +349,7 @@ export default function PipelineView({
   // Safe client wrapper that normalizes the stages dynamically
   const normalizedClients = clients.map(c => ({
     ...c,
-    pipelineStatus: normalizeStage(c.pipelineStatus)
+    pipelineStatus: normalizeStage(c.pipelineStatus, stages)
   }));
 
   // Open loss reason dialogue
@@ -347,18 +374,18 @@ export default function PipelineView({
 
   // Handle stage movement
   const moveStage = async (client: Client, direction: "prev" | "next") => {
-    const currentStage = normalizeStage(client.pipelineStatus);
-    const currentIndex = PIPELINE_STAGES.indexOf(currentStage);
+    const currentStage = normalizeStage(client.pipelineStatus, stages);
+    const currentIndex = stages.indexOf(currentStage);
     
     let newIndex = currentIndex;
     if (direction === "prev" && currentIndex > 0) {
       newIndex = currentIndex - 1;
-    } else if (direction === "next" && currentIndex < PIPELINE_STAGES.length - 1) {
+    } else if (direction === "next" && currentIndex < stages.length - 1) {
       newIndex = currentIndex + 1;
     }
 
     if (newIndex !== currentIndex) {
-      const nextStageName = PIPELINE_STAGES[newIndex];
+      const nextStageName = stages[newIndex];
       
       // If moving to Perdido, show prompt
       if (nextStageName === "Perdido") {
@@ -612,7 +639,7 @@ export default function PipelineView({
       <div id="pipeline-mobile-view" className="block md:hidden space-y-4">
         {/* Scrollable Stage Tab Chips */}
         <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none -mx-4 px-4">
-          {PIPELINE_STAGES.map((stage, idx) => {
+          {stages.map((stage, idx) => {
             const stageClients = getClientsInStage(stage);
             const isSelected = mobileSelectedStage === stage;
             const details = getStageDetails(stage);
@@ -785,17 +812,27 @@ export default function PipelineView({
                     </div>
                   </div>
 
-                  {/* Financial metrics */}
-                  <div className="grid grid-cols-2 gap-2 bg-surface-container-low/40 p-2.5 rounded-lg border border-outline-variant/10">
-                    <div>
-                      <span className="text-[9px] text-on-surface-variant font-bold block uppercase tracking-wider">Valor do Negócio</span>
-                      <span className="text-xs font-black text-primary">R$ {finalPotentialVal.toLocaleString("pt-BR")}</span>
-                    </div>
-                    <div>
-                      <span className="text-[9px] text-on-surface-variant font-bold block uppercase tracking-wider">Previsão Comissão</span>
-                      <span className="text-xs font-black text-emerald-600 dark:text-emerald-400">R$ {Math.floor(finalCommissionVal).toLocaleString("pt-BR")} ({finalCommissionPercent}%)</span>
-                    </div>
-                  </div>
+                   {/* Financial metrics */}
+                   <div className="grid grid-cols-3 gap-2 bg-surface-container-low/40 p-2.5 rounded-lg border border-outline-variant/10 text-left">
+                     <div>
+                       <span className="text-[9px] text-on-surface-variant font-bold block uppercase tracking-wider">Valor</span>
+                       <span className="text-xs font-black text-primary">R$ {finalPotentialVal.toLocaleString("pt-BR")}</span>
+                     </div>
+                     <div>
+                       <span className="text-[9px] text-on-surface-variant font-bold block uppercase tracking-wider">Comissão</span>
+                       <span className="text-xs font-black text-emerald-600 dark:text-emerald-400">R$ {Math.floor(finalCommissionVal).toLocaleString("pt-BR")} ({finalCommissionPercent}%)</span>
+                     </div>
+                     <div>
+                       <span className="text-[9px] text-on-surface-variant font-bold block uppercase tracking-wider">Probab.</span>
+                       <span className={`text-[10px] font-black block ${
+                         client.closingProbability === "Alta" ? "text-emerald-600 dark:text-emerald-400" :
+                         client.closingProbability === "Baixa" ? "text-rose-600 dark:text-rose-400" :
+                         "text-amber-600 dark:text-amber-400"
+                       }`}>
+                         {client.closingProbability || "Média"}
+                       </span>
+                     </div>
+                   </div>
 
                   {/* Lost Reason Display */}
                   {mobileSelectedStage === "Perdido" && client.lossReason && (
@@ -915,7 +952,7 @@ export default function PipelineView({
                   {/* Stage Stepper Navigation for Mobile */}
                   <div className="flex items-center justify-between border-t border-outline-variant/30 pt-2.5 mt-1 gap-2">
                     <button
-                      disabled={PIPELINE_STAGES.indexOf(mobileSelectedStage) === 0}
+                      disabled={stages.indexOf(mobileSelectedStage) === 0}
                       onClick={() => moveStage(client, "prev")}
                       className="flex-1 py-1 px-3 rounded-lg bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer text-xs font-bold flex items-center justify-center gap-1"
                     >
@@ -927,7 +964,7 @@ export default function PipelineView({
                       onChange={(e) => setSpecificStage(client, e.target.value)}
                       className="text-[10px] font-bold bg-surface-container-high border border-outline-variant rounded-lg py-1 px-2 text-center text-on-surface outline-none"
                     >
-                      {PIPELINE_STAGES.map((s, idx) => (
+                      {stages.map((s, idx) => (
                         <option key={`opt-mob-stage-${s}`} value={s}>
                           {idx + 1}. {s}
                         </option>
@@ -935,7 +972,7 @@ export default function PipelineView({
                     </select>
 
                     <button
-                      disabled={PIPELINE_STAGES.indexOf(mobileSelectedStage) === PIPELINE_STAGES.length - 1}
+                      disabled={stages.indexOf(mobileSelectedStage) === stages.length - 1}
                       onClick={() => moveStage(client, "next")}
                       className="flex-1 py-1 px-3 rounded-lg bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer text-xs font-bold flex items-center justify-center gap-1"
                     >
@@ -952,7 +989,7 @@ export default function PipelineView({
       {/* DESKTOP FULL HORIZONTAL BOARD LAYOUT */}
       <div id="pipeline-desktop-view" className="hidden md:block overflow-x-auto pb-4 -mx-4 px-4 scrollbar-thin">
         <div className="flex gap-4 min-w-[2800px]">
-          {PIPELINE_STAGES.map((stage, idx) => {
+          {stages.map((stage, idx) => {
             const stageClients = getClientsInStage(stage);
             const details = getStageDetails(stage);
             
@@ -1107,7 +1144,7 @@ export default function PipelineView({
                           </div>
 
                           {/* Deal Financials block */}
-                          <div className="bg-surface-container-low/40 p-2 rounded-lg border border-outline-variant/10 text-[10px] flex flex-col gap-1">
+                          <div className="bg-surface-container-low/40 p-2 rounded-lg border border-outline-variant/10 text-[10px] flex flex-col gap-1 text-left">
                             <div className="flex justify-between items-center">
                               <span className="text-on-surface-variant font-bold">VALOR POTENCIAL:</span>
                               <span className="font-extrabold text-primary">R$ {finalPotentialVal.toLocaleString("pt-BR")}</span>
@@ -1115,6 +1152,14 @@ export default function PipelineView({
                             <div className="flex justify-between items-center border-t border-outline-variant/20 pt-1 mt-0.5">
                               <span className="text-on-surface-variant font-bold">COMISSÃO ({finalCommissionPercent}%):</span>
                               <span className="font-extrabold text-emerald-600 dark:text-emerald-400">R$ {Math.floor(finalCommissionVal).toLocaleString("pt-BR")}</span>
+                            </div>
+                            <div className="flex justify-between items-center border-t border-outline-variant/20 pt-1 mt-0.5">
+                              <span className="text-on-surface-variant font-bold">PROBABILIDADE:</span>
+                              <span className={`font-extrabold ${
+                                client.closingProbability === "Alta" ? "text-emerald-600 dark:text-emerald-400" :
+                                client.closingProbability === "Baixa" ? "text-rose-600 dark:text-rose-400" :
+                                "text-amber-600 dark:text-amber-400"
+                              }`}>{client.closingProbability || "Média"}</span>
                             </div>
                           </div>
 
@@ -1248,7 +1293,7 @@ export default function PipelineView({
                               onChange={(e) => setSpecificStage(client, e.target.value)}
                               className="text-[10px] font-bold bg-transparent outline-none text-on-surface-variant max-w-[130px] border border-transparent hover:border-outline-variant rounded px-1 text-center cursor-pointer"
                             >
-                              {PIPELINE_STAGES.map((s, sIdx) => (
+                              {stages.map((s, sIdx) => (
                                 <option key={`opt-stage-${s}`} value={s}>
                                   {sIdx + 1}. {s}
                                 </option>
@@ -1256,7 +1301,7 @@ export default function PipelineView({
                             </select>
 
                             <button
-                              disabled={idx === PIPELINE_STAGES.length - 1}
+                              disabled={idx === stages.length - 1}
                               onClick={() => moveStage(client, "next")}
                               className="p-1 rounded bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
                               title="Avançar Etapa"
@@ -1717,7 +1762,7 @@ export default function PipelineView({
                     onChange={(e) => setNewStage(e.target.value)}
                     className="w-full px-2 py-2 bg-surface-container-low border border-outline-variant rounded-lg outline-none text-xs text-on-surface"
                   >
-                    {PIPELINE_STAGES.map((s) => (
+                    {stages.map((s) => (
                       <option key={`qs-init-${s}`} value={s}>
                         {s}
                       </option>

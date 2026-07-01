@@ -1,15 +1,17 @@
 import React, { useState } from "react";
 import { motion } from "motion/react";
-import { Client, User as DbUser, HistoryEntry, Task, Proposal, Visit } from "../types";
+import { Client, User as DbUser, HistoryEntry, Task, Proposal, Visit, Property } from "../types";
 import { getClientAlerts, getAlertBadgeStyles } from "../utils/alerts";
+import { getMatchingProperties } from "../utils/matching";
 import { 
   X, User, Phone, Mail, Award, Landmark, Trash2, Edit, Save, Loader2, Check, Cake, MapPin,
   History, Plus, MessageSquare, Calendar, DollarSign, CheckCircle2, AlertCircle, Clock, PlusCircle,
-  AlertTriangle
+  AlertTriangle, Sparkles
 } from "lucide-react";
 
 interface ClientModalProps {
   client: Client;
+  properties?: Property[];
   tasks?: Task[];
   proposals?: Proposal[];
   visits?: Visit[];
@@ -21,6 +23,7 @@ interface ClientModalProps {
 
 export default function ClientModal({ 
   client, 
+  properties = [],
   tasks = [], 
   proposals = [], 
   visits = [], 
@@ -58,6 +61,34 @@ export default function ClientModal({
   const [temperature, setTemperature] = useState<"Frio" | "Morno" | "Quente">(client.temperature || "Morno");
   const [nextAction, setNextAction] = useState(client.nextAction || "");
   const [nextFollowUpDate, setNextFollowUpDate] = useState(client.nextFollowUpDate || "");
+
+  // Commission calculation states
+  const [potentialValue, setPotentialValue] = useState<number>(
+    client.potentialValue !== undefined ? client.potentialValue : (client.maxBudget || 0)
+  );
+  const [commissionPercent, setCommissionPercent] = useState<number>(
+    client.commissionPercent !== undefined 
+      ? client.commissionPercent 
+      : (currentUser?.defaultCommissionPercent !== undefined ? currentUser.defaultCommissionPercent : 5)
+  );
+  const [commissionForecast, setCommissionForecast] = useState<number>(
+    client.commissionForecast !== undefined 
+      ? client.commissionForecast 
+      : Math.floor((client.potentialValue || client.maxBudget || 0) * (client.commissionPercent ?? (currentUser?.defaultCommissionPercent ?? 5)) / 100)
+  );
+  const [closingProbability, setClosingProbability] = useState<"Baixa" | "Média" | "Alta">(
+    client.closingProbability || "Média"
+  );
+
+  const handlePotentialValueChange = (val: number) => {
+    setPotentialValue(val);
+    setCommissionForecast(Math.floor(val * commissionPercent / 100));
+  };
+
+  const handleCommissionPercentChange = (val: number) => {
+    setCommissionPercent(val);
+    setCommissionForecast(Math.floor(potentialValue * val / 100));
+  };
 
   // Get client's visual initials
   const getInitials = (fullName: string) => {
@@ -141,6 +172,10 @@ export default function ClientModal({
         temperature,
         nextAction,
         nextFollowUpDate,
+        potentialValue: Number(potentialValue),
+        commissionPercent: Number(commissionPercent),
+        commissionForecast: Number(commissionForecast),
+        closingProbability,
       };
       await onUpdate(updatedClient);
       setIsEditing(false);
@@ -347,6 +382,47 @@ export default function ClientModal({
                 </div>
               </div>
 
+              {/* Previsão de Comissão & Negociação (Dinheiro em Jogo!) */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-primary uppercase tracking-wider flex items-center gap-1.5">
+                  <DollarSign className="w-4 h-4 text-emerald-600" />
+                  Previsão de Comissão <span className="text-[10px] text-on-surface-variant font-normal normal-case italic">(Estimativa)</span>
+                </h4>
+                <div className="grid grid-cols-2 gap-3 bg-emerald-500/5 p-4 rounded-xl border border-emerald-500/20 shadow-sm text-sm">
+                  <div>
+                    <p className="text-[10px] text-on-surface-variant uppercase font-bold">Valor do Negócio</p>
+                    <p className="font-extrabold text-primary text-base mt-0.5">
+                      R$ {(client.potentialValue !== undefined ? client.potentialValue : (client.maxBudget || 0)).toLocaleString("pt-BR")}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-on-surface-variant uppercase font-bold">Probabilidade de Fechamento</p>
+                    <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-extrabold mt-1 ${
+                      client.closingProbability === "Alta" ? "bg-emerald-100 text-emerald-800 border border-emerald-200" :
+                      client.closingProbability === "Baixa" ? "bg-rose-100 text-rose-800 border border-rose-200" :
+                      "bg-amber-100 text-amber-800 border border-amber-200"
+                    }`}>
+                      {client.closingProbability || "Média"}
+                    </span>
+                  </div>
+                  <div className="pt-2 border-t border-outline-variant/30">
+                    <p className="text-[10px] text-on-surface-variant uppercase font-bold">Comissão (%)</p>
+                    <p className="font-bold text-on-surface mt-0.5">
+                      {client.commissionPercent !== undefined ? client.commissionPercent : (currentUser?.defaultCommissionPercent ?? 5)}%
+                    </p>
+                  </div>
+                  <div className="pt-2 border-t border-outline-variant/30">
+                    <p className="text-[10px] text-on-surface-variant uppercase font-bold font-extrabold">Comissão Potencial Estimada</p>
+                    <p className="font-extrabold text-emerald-600 dark:text-emerald-400 mt-0.5">
+                      R$ {(client.commissionForecast !== undefined 
+                        ? client.commissionForecast 
+                        : Math.floor((client.potentialValue || client.maxBudget || 0) * (client.commissionPercent ?? (currentUser?.defaultCommissionPercent ?? 5)) / 100)
+                      ).toLocaleString("pt-BR")}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
               {/* Client Preference & Budget Section */}
               <div className="space-y-3">
                 <h4 className="text-xs font-bold text-primary uppercase tracking-wider">Perfil & Interesse Imobiliário</h4>
@@ -379,6 +455,121 @@ export default function ClientModal({
                 <p className="text-on-surface-variant text-body-sm leading-relaxed bg-surface-container-lowest p-4 rounded-xl border border-outline-variant/20 shadow-sm whitespace-pre-wrap">
                   {client.observations || "Nenhuma observação ou anotação cadastrada."}
                 </p>
+              </div>
+
+              {/* IMÓVEIS COMPATÍVEIS RECOMENDADOS */}
+              <div className="space-y-3 pt-3 border-t border-outline-variant/30 text-left">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-primary uppercase tracking-wider flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-emerald-600 animate-pulse" />
+                    Imóveis Compatíveis Recomendados
+                  </h4>
+                  <span className="text-[10px] text-on-surface-variant bg-emerald-500/10 px-2 py-0.5 rounded-full font-bold">
+                    {getMatchingProperties(client, properties).length} Encontrados
+                  </span>
+                </div>
+
+                {(() => {
+                  const matches = getMatchingProperties(client, properties);
+                  if (matches.length === 0) {
+                    return (
+                      <div className="p-4 bg-surface-container-low border border-outline-variant/20 rounded-xl text-center text-xs text-on-surface-variant font-medium">
+                        Nenhum imóvel compatível encontrado para o perfil deste cliente no momento. Cadastre novos imóveis ou ajuste a faixa de orçamento/bairro de interesse.
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+                      {matches.slice(0, 4).map(({ property, score, reasons }) => {
+                        const formattedPrice = (property.price || 0).toLocaleString("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
+                          maximumFractionDigits: 0
+                        });
+
+                        // Generate pre-filled WhatsApp message
+                        const cleanPhone = client.phone.replace(/\D/g, "");
+                        const whatsappPhone = cleanPhone.startsWith("55") ? cleanPhone : `55${cleanPhone}`;
+                        const messageText = `Olá, *${client.name}*! Tudo bem?
+Encontrei este imóvel incrível no Metria CRM que é extremamente compatível com o seu perfil e o que você procura:
+
+🏡 *${property.title}*
+📍 *Localização:* ${property.neighborhood || "Bairro não informado"}, ${property.city || "Cidade não informada"}
+💰 *Valor:* ${formattedPrice}
+📐 *Área:* ${property.area}m² | 🛏️ *Quartos:* ${property.bedrooms} | 🚿 *Banheiros:* ${property.bathrooms}
+
+Gostaria de agendar uma visita ou receber mais fotos deste imóvel?`;
+
+                        const whatsappUrl = `https://api.whatsapp.com/send?phone=${whatsappPhone}&text=${encodeURIComponent(messageText)}`;
+
+                        return (
+                          <div
+                            key={property.id || property._id}
+                            className="bg-white border border-outline-variant/35 p-3.5 rounded-xl hover:border-emerald-500/40 transition-all shadow-sm relative overflow-hidden flex flex-col justify-between gap-3 text-xs"
+                          >
+                            <div className="flex justify-between items-start gap-2">
+                              <div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[10px] bg-secondary-container text-on-secondary-container px-2 py-0.5 rounded font-bold font-mono">
+                                    {property.code || "IM-NOVO"}
+                                  </span>
+                                  <span className="text-[10px] bg-emerald-50 text-emerald-800 border border-emerald-100 px-1.5 py-0.5 rounded font-bold">
+                                    {property.type}
+                                  </span>
+                                </div>
+                                <h5 className="font-extrabold text-primary text-sm mt-1.5 leading-snug">
+                                  {property.title}
+                                </h5>
+                                <p className="text-[11px] text-on-surface-variant font-medium mt-0.5">
+                                  {property.neighborhood}, {property.city}
+                                </p>
+                              </div>
+
+                              {/* Compatibility Score Circle */}
+                              <div className="flex flex-col items-end flex-shrink-0">
+                                <span className={`text-[11px] font-black px-2.5 py-1 rounded-full border ${
+                                  score >= 80 ? "bg-emerald-100 text-emerald-800 border-emerald-200" :
+                                  score >= 60 ? "bg-amber-100 text-amber-800 border-amber-200" :
+                                  "bg-orange-100 text-orange-800 border-orange-200"
+                                }`}>
+                                  {score}% Compatível
+                                </span>
+                                <span className="font-bold text-emerald-700 text-xs mt-1.5">{formattedPrice}</span>
+                              </div>
+                            </div>
+
+                            {/* Motivos da Recomendação */}
+                            <div className="bg-surface-container-lowest/50 p-2 rounded-lg border border-outline-variant/10 text-[10.5px]">
+                              <p className="font-bold text-primary mb-1 text-[9.5px] uppercase tracking-wider">Motivos da Recomendação:</p>
+                              <ul className="space-y-1">
+                                {reasons.map((reason, rIdx) => (
+                                  <li key={rIdx} className="flex items-start gap-1 text-on-surface-variant font-medium">
+                                    <span className="text-emerald-600 font-bold">✓</span>
+                                    <span>{reason}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+
+                            {/* Actions inside card */}
+                            <div className="flex justify-end pt-1">
+                              <a
+                                href={whatsappUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] px-3.5 py-2 rounded-lg shadow-sm transition-colors cursor-pointer"
+                              >
+                                <MessageSquare className="w-3.5 h-3.5" />
+                                Enviar Imóvel pelo WhatsApp
+                              </a>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* HISTÓRICO DE ATENDIMENTO */}
@@ -670,18 +861,25 @@ export default function ClientModal({
                     onChange={(e) => setPipelineStatus(e.target.value)}
                     className="h-11 px-3 border border-outline-variant bg-white rounded-lg text-sm w-full"
                   >
-                    <option value="Novo lead">1. Novo lead</option>
-                    <option value="Primeiro contato">2. Primeiro contato</option>
-                    <option value="Em atendimento">3. Em atendimento</option>
-                    <option value="Imóvel enviado">4. Imóvel enviado</option>
-                    <option value="Visita agendada">5. Visita agendada</option>
-                    <option value="Visita realizada">6. Visita realizada</option>
-                    <option value="Proposta enviada">7. Proposta enviada</option>
-                    <option value="Em negociação">8. Em negociação</option>
-                    <option value="Documentação">9. Documentação</option>
-                    <option value="Contrato">10. Contrato</option>
-                    <option value="Fechado">11. Fechado</option>
-                    <option value="Perdido">12. Perdido</option>
+                    {(currentUser?.pipelineStages && currentUser.pipelineStages.length > 0 
+                      ? currentUser.pipelineStages 
+                      : [
+                          "Novo lead",
+                          "Primeiro contato",
+                          "Em atendimento",
+                          "Imóvel enviado",
+                          "Visita agendada",
+                          "Visita realizada",
+                          "Proposta enviada",
+                          "Em negociação",
+                          "Documentação",
+                          "Contrato",
+                          "Fechado",
+                          "Perdido"
+                        ]
+                    ).map((s, idx) => (
+                      <option key={s} value={s}>{idx + 1}. {s}</option>
+                    ))}
                   </select>
                 </div>
                 <div className="flex flex-col gap-1">
@@ -792,15 +990,22 @@ export default function ClientModal({
                     onChange={(e) => setLeadSource(e.target.value)}
                     className="h-11 px-3 border border-outline-variant bg-white rounded-lg text-sm"
                   >
-                    <option>Indicação</option>
-                    <option>Instagram</option>
-                    <option>Facebook</option>
-                    <option>OLX</option>
-                    <option>Portal Imobiliário</option>
-                    <option>Placa</option>
-                    <option>WhatsApp</option>
-                    <option>Tráfego Pago</option>
-                    <option>Outro</option>
+                    {(currentUser?.leadSources && currentUser.leadSources.length > 0
+                      ? currentUser.leadSources
+                      : [
+                          "Indicação",
+                          "Instagram",
+                          "Facebook",
+                          "OLX",
+                          "Portal Imobiliário",
+                          "Placa",
+                          "WhatsApp",
+                          "Tráfego Pago",
+                          "Outro"
+                        ]
+                    ).map((src) => (
+                      <option key={src} value={src}>{src}</option>
+                    ))}
                   </select>
                 </div>
                 <div className="flex flex-col gap-1">
@@ -814,6 +1019,60 @@ export default function ClientModal({
                     <option>Morno</option>
                     <option>Quente</option>
                   </select>
+                </div>
+              </div>
+
+              {/* Previsão de Comissão & Negociação (Estimativas) */}
+              <div className="space-y-3 pt-3 border-t border-outline-variant/30 text-left">
+                <h4 className="text-xs font-bold text-primary uppercase tracking-wider flex items-center gap-1.5">
+                  Previsão de Comissão & Negociação <span className="text-[10px] text-on-surface-variant font-normal normal-case italic">(Estimativas)</span>
+                </h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-bold text-primary uppercase">Valor do Negócio (R$)</label>
+                    <input
+                      type="number"
+                      value={potentialValue || ""}
+                      onChange={(e) => handlePotentialValueChange(Number(e.target.value))}
+                      placeholder="Ex: 500000"
+                      className="h-11 px-3 border border-outline-variant rounded-lg focus:border-secondary bg-white outline-none text-sm"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-bold text-primary uppercase">Probabilidade de Fechamento</label>
+                    <select
+                      value={closingProbability}
+                      onChange={(e) => setClosingProbability(e.target.value as any)}
+                      className="h-11 px-3 border border-outline-variant bg-white rounded-lg text-sm"
+                    >
+                      <option value="Baixa">Baixa</option>
+                      <option value="Média">Média</option>
+                      <option value="Alta">Alta</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-bold text-primary uppercase">Comissão (%)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={commissionPercent}
+                      onChange={(e) => handleCommissionPercentChange(Number(e.target.value))}
+                      placeholder="Ex: 5"
+                      className="h-11 px-3 border border-outline-variant rounded-lg focus:border-secondary bg-white outline-none text-sm"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-bold text-primary uppercase">Comissão Estimada (R$)</label>
+                    <input
+                      type="number"
+                      value={commissionForecast || ""}
+                      onChange={(e) => setCommissionForecast(Number(e.target.value))}
+                      placeholder="Ex: 25000"
+                      className="h-11 px-3 border border-outline-variant rounded-lg focus:border-secondary bg-white outline-none text-sm"
+                    />
+                  </div>
                 </div>
               </div>
 

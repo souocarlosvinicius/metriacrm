@@ -24,6 +24,7 @@ export default function UserProfileModal({ user, onClose, onUpdateSuccess, onLog
   const [creci, setCreci] = useState(user.creci || "");
   const [primaryCity, setPrimaryCity] = useState(user.primaryCity || "");
   const [actingType, setActingType] = useState(user.actingType || "Venda");
+  const [defaultCommissionPercent, setDefaultCommissionPercent] = useState<number>(user.defaultCommissionPercent !== undefined ? user.defaultCommissionPercent : 5);
   
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -46,6 +47,7 @@ export default function UserProfileModal({ user, onClose, onUpdateSuccess, onLog
         creci: creci.trim(),
         primaryCity: primaryCity.trim(),
         actingType: actingType,
+        defaultCommissionPercent: Number(defaultCommissionPercent) || 0,
         onboardingCompleted: true, // Mark completed if not already
       };
 
@@ -280,6 +282,25 @@ export default function UserProfileModal({ user, onClose, onUpdateSuccess, onLog
                     <option value="Geral">Geral</option>
                   </select>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-on-surface-variant mb-1 uppercase tracking-wider">
+                  Percentual de Comissão Padrão (%)
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  max="100"
+                  value={defaultCommissionPercent}
+                  onChange={(e) => setDefaultCommissionPercent(Number(e.target.value))}
+                  className="w-full px-3 py-2 text-xs bg-surface-container-high border border-outline-variant/50 rounded-xl focus:outline-none focus:border-primary/50 text-on-surface animate-in fade-in"
+                  placeholder="Ex: 5"
+                />
+                <span className="text-[10px] text-on-surface-variant font-medium mt-0.5 block">
+                  Usado como percentual base estimado para novos imóveis e negociações
+                </span>
               </div>
             </div>
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Property, User, Client } from "../types";
-import { Search, Home, Plus, Bed, Square, Shield, X, Check, Save, Loader2, DollarSign, Bath, Car, Upload, Video, Film, Trash, Image as ImageIcon } from "lucide-react";
+import { Search, Home, Plus, Bed, Square, Shield, X, Check, Save, Loader2, DollarSign, Bath, Car, Upload, Video, Film, Trash, Image as ImageIcon, Star } from "lucide-react";
+import { apiFetch } from "../api";
 
 interface PropertiesViewProps {
   properties: Property[];
@@ -115,11 +116,29 @@ export default function PropertiesView({ properties, clients, onAddProperty, onS
     setIsUploadingPhotos(true);
     try {
       const compressedPromises = filesArray.map(file => compressImage(file as File));
-      const results = await Promise.all(compressedPromises);
-      setUploadedPhotos(prev => [...prev, ...results]);
-    } catch (err) {
+      const base64Results = await Promise.all(compressedPromises);
+      
+      const uploadPromises = base64Results.map(async (dataUrl) => {
+        const response = await apiFetch("/api/upload", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ dataUrl })
+        });
+        if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.error || "Erro no upload.");
+        }
+        const data = await response.json();
+        return data.url;
+      });
+
+      const serverUrls = await Promise.all(uploadPromises);
+      setUploadedPhotos(prev => [...prev, ...serverUrls]);
+    } catch (err: any) {
       console.error("Erro ao carregar fotos:", err);
-      alert("Houve um erro ao processar as fotos selecionadas.");
+      alert(`Houve um erro ao processar as fotos selecionadas: ${err.message || err}`);
     } finally {
       setIsUploadingPhotos(false);
       if (e.target) e.target.value = "";
@@ -407,11 +426,56 @@ export default function PropertiesView({ properties, clients, onAddProperty, onS
 
           {/* Empty fallback */}
           {filteredProperties.length === 0 && (
-            <div className="flex flex-col items-center justify-center text-center py-16 text-on-surface-variant bg-surface-container-low rounded-2xl border border-dashed border-outline-variant/50">
-              <Home className="w-12 h-12 text-outline-variant stroke-[1] mb-3" />
-              <p className="font-bold">Nenhum imóvel encontrado</p>
-              <p className="text-xs opacity-80 mt-1 max-w-xs">Nenhum imóvel atende aos filtros atuais. Amplie sua busca ou cadastre um novo imóvel para a sua carteira.</p>
-            </div>
+            properties.length === 0 ? (
+              <div className="flex flex-col items-center justify-center text-center py-20 px-6 text-on-surface-variant bg-surface-container-low rounded-3xl border border-dashed border-outline-variant/60 shadow-sm animate-in fade-in duration-300 max-w-2xl mx-auto my-4 col-span-full">
+                <div className="w-16 h-16 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-5 shadow-inner">
+                  <Home className="w-8 h-8 stroke-[1.5]" />
+                </div>
+                <h3 className="font-display text-xl font-bold text-on-surface tracking-tight">
+                  Sua carteira de imóveis ainda está vazia.
+                </h3>
+                <p className="text-sm opacity-90 mt-2 max-w-md leading-relaxed">
+                  Adicione seus imóveis disponíveis para cruzar oportunidades com seus clientes.
+                </p>
+                <button
+                  onClick={() => setShowAddForm(true)}
+                  className="mt-6 px-6 py-3 bg-primary hover:bg-primary/95 text-on-primary font-bold text-sm rounded-xl transition-all shadow-md active:scale-95 flex items-center gap-2 hover:shadow-lg cursor-pointer"
+                >
+                  <Plus className="w-4 h-4 stroke-[2.5]" />
+                  Cadastrar imóvel
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center text-center py-16 px-6 text-on-surface-variant bg-surface-container-low rounded-3xl border border-dashed border-outline-variant/40 shadow-sm animate-in fade-in duration-200 col-span-full">
+                <div className="w-12 h-12 rounded-full bg-on-surface-variant/10 text-on-surface-variant flex items-center justify-center mb-4">
+                  <Search className="w-6 h-6 stroke-[1.5]" />
+                </div>
+                <h3 className="font-display text-base font-bold text-on-surface">
+                  Nenhum imóvel encontrado
+                </h3>
+                <p className="text-xs opacity-80 mt-1 max-w-sm leading-relaxed">
+                  Nenhum imóvel atende aos filtros atuais de busca ou modalidade. Tente alterar os termos ou limpe a seleção.
+                </p>
+                <div className="flex gap-2.5 mt-5">
+                  <button
+                    onClick={() => {
+                      setSearch("");
+                      setFilter("Todos");
+                    }}
+                    className="px-4 py-2 bg-white hover:bg-surface-container text-primary border border-outline-variant rounded-lg text-xs font-bold transition-all active:scale-[0.97] cursor-pointer shadow-sm"
+                  >
+                    Limpar filtros
+                  </button>
+                  <button
+                    onClick={() => setShowAddForm(true)}
+                    className="px-4 py-2 bg-primary hover:bg-primary/95 text-on-primary rounded-lg text-xs font-bold transition-all active:scale-[0.97] flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                    Novo imóvel
+                  </button>
+                </div>
+              </div>
+            )
           )}
 
           {/* Floating Action Button for adding */}
@@ -817,29 +881,50 @@ export default function PropertiesView({ properties, clients, onAddProperty, onS
                     </div>
                   </div>
 
-                  {/* Thumbnail Grid */}
-                  {uploadedPhotos.length > 0 && (
-                    <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 pt-2">
-                      {uploadedPhotos.map((photo, idx) => (
-                        <div key={idx} className="relative aspect-square rounded-xl overflow-hidden group shadow-sm border border-outline-variant">
-                          <img src={photo} alt={`Foto ${idx + 1}`} className="w-full h-full object-cover" />
-                           <button
-                             type="button"
-                             onClick={(e) => {
-                               e.stopPropagation();
-                               setUploadedPhotos(prev => prev.filter((_, i) => i !== idx));
-                             }}
-                             className="absolute top-1 right-1 p-1 bg-black/60 hover:bg-red-600 rounded-full text-white transition-all scale-90 group-hover:scale-100"
-                           >
-                             <X className="w-3.5 h-3.5" />
-                           </button>
-                          <span className="absolute bottom-1 left-1 bg-black/50 text-white px-1 py-0.5 rounded text-[8px] font-bold font-mono">
-                            #{idx + 1}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                   {/* Thumbnail Grid */}
+                   {uploadedPhotos.length > 0 && (
+                     <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 pt-2">
+                       {uploadedPhotos.map((photo, idx) => (
+                         <div key={idx} className="relative aspect-square rounded-xl overflow-hidden group shadow-sm border border-outline-variant">
+                           <img src={photo} alt={`Foto ${idx + 1}`} className="w-full h-full object-cover" />
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setUploadedPhotos(prev => prev.filter((_, i) => i !== idx));
+                              }}
+                              className="absolute top-1 right-1 p-1 bg-black/60 hover:bg-red-600 rounded-full text-white transition-all scale-90 group-hover:scale-100 z-10"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                            {idx === 0 ? (
+                              <span className="absolute bottom-1 left-1 bg-emerald-500 text-white px-1 py-0.5 rounded text-[8px] font-bold flex items-center gap-0.5 shadow-sm z-10">
+                                <Star className="w-2.5 h-2.5 fill-current text-amber-300" /> Principal
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setUploadedPhotos(prev => {
+                                    const next = [...prev];
+                                    const [selected] = next.splice(idx, 1);
+                                    return [selected, ...next];
+                                  });
+                                }}
+                                className="absolute bottom-1 left-1 p-1 bg-black/55 hover:bg-emerald-500 rounded text-white transition-all opacity-0 group-hover:opacity-100 flex items-center gap-0.5 text-[8px] font-bold z-10"
+                                title="Definir como foto principal"
+                              >
+                                <Star className="w-2.5 h-2.5 text-amber-300" /> Principal
+                              </button>
+                            )}
+                           <span className="absolute bottom-1 right-1 bg-black/50 text-white px-1 py-0.5 rounded text-[8px] font-bold font-mono">
+                             #{idx + 1}
+                           </span>
+                         </div>
+                       ))}
+                     </div>
+                   )}
                 </div>
 
                 {/* Fallback preset photo if no device photos are loaded */}

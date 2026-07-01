@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Property, Client, Task, DBStatus, User, Proposal, Visit } from "../types";
 import { apiFetch } from "../api";
 import { getClientAlerts, getAlertBadgeStyles, Alert } from "../utils/alerts";
@@ -26,7 +26,11 @@ import {
   AlertCircle,
   AlertTriangle,
   Flame,
-  TrendingDown
+  TrendingDown,
+  RefreshCw,
+  PhoneCall,
+  User as UserIcon,
+  Sparkle
 } from "lucide-react";
 
 interface DashboardViewProps {
@@ -63,6 +67,72 @@ export default function DashboardView({
   const [isGeneratingAiTasks, setIsGeneratingAiTasks] = useState(false);
   const [suggestedAiTasks, setSuggestedAiTasks] = useState<Task[]>([]);
   const [aiTasksAdded, setAiTasksAdded] = useState<Record<number, boolean>>({});
+
+  const [bestActions, setBestActions] = useState<any[]>([]);
+  const [isLoadingBestActions, setIsLoadingBestActions] = useState(false);
+  const [bestActionStatus, setBestActionStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [executingActionId, setExecutingActionId] = useState<string | null>(null);
+  const [taskAddedFeedback, setTaskAddedFeedback] = useState<Record<string, boolean>>({});
+
+  const fetchBestActions = async () => {
+    setIsLoadingBestActions(true);
+    setBestActionStatus("loading");
+    try {
+      const response = await apiFetch("/api/ai/next-best-actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clients,
+          tasks,
+          proposals,
+          visits
+        })
+      });
+      const data = await response.json();
+      if (Array.isArray(data)) {
+        setBestActions(data);
+        setBestActionStatus("success");
+      } else {
+        setBestActionStatus("error");
+      }
+    } catch (err) {
+      console.error("Erro ao carregar próximas melhores ações:", err);
+      setBestActionStatus("error");
+    } finally {
+      setIsLoadingBestActions(false);
+    }
+  };
+
+  useEffect(() => {
+    if (clients && clients.length > 0) {
+      fetchBestActions();
+    }
+  }, [clients.length, tasks.length, proposals?.length, visits?.length]);
+
+  const handleExecuteAddTask = async (action: any, index: number) => {
+    const actionId = `${action.clientId}-${index}`;
+    setExecutingActionId(actionId);
+    try {
+      const taskPayload = {
+        date: new Date().toISOString().split("T")[0],
+        time: "10:00",
+        title: action.actionPayload.taskTitle || `Follow-up com ${action.clientName}`,
+        clientId: action.clientId,
+        clientName: action.clientName,
+        type: action.actionPayload.taskType || "Cobrar retorno",
+        priority: "média" as "baixa" | "média" | "alta",
+        completed: false,
+        description: action.actionPayload.taskDescription || action.suggestion
+      };
+      await onAddTask(taskPayload);
+      setTaskAddedFeedback(prev => ({ ...prev, [actionId]: true }));
+    } catch (err) {
+      console.error("Erro ao agendar tarefa a partir da recomendação:", err);
+      alert("Falha ao agendar tarefa.");
+    } finally {
+      setExecutingActionId(null);
+    }
+  };
 
   // Welcome greeting
   const getGreeting = () => {
@@ -159,6 +229,80 @@ export default function DashboardView({
   const upcomingVisits = tasks
     .filter(t => t.type === "VISITA" && !t.completed)
     .slice(0, 3);
+
+  // Previsão de Comissão Metrics (Dinheiro em Jogo!)
+  const commissionMetrics = (() => {
+    let totalPotential = 0;
+    let openProposals = 0;
+    let hotDeals = 0;
+    let closedMonth = 0;
+
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth(); // 0-indexed
+
+    clients.forEach(c => {
+      // Calculate estimated commission if not defined
+      const budget = c.potentialValue || c.maxBudget || 0;
+      const pct = c.commissionPercent !== undefined ? c.commissionPercent : (currentUser?.defaultCommissionPercent ?? 5);
+      const commission = c.commissionForecast !== undefined ? c.commissionForecast : (budget * pct / 100);
+
+      const stage = c.pipelineStatus || "Novo lead";
+
+      // 1. Comissão Potencial Total (todos exceto Fechado e Perdido)
+      if (stage !== "Fechado" && stage !== "Perdido") {
+        totalPotential += commission;
+      }
+
+      // 2. Comissão em Propostas Abertas (stage: "Proposta enviada")
+      if (stage === "Proposta enviada") {
+        openProposals += commission;
+      }
+
+      // 3. Comissão em Negociações Quentes (temperatura "Quente" ou probabilidade "Alta", e não finalizados)
+      if (stage !== "Fechado" && stage !== "Perdido" && (c.temperature === "Quente" || c.closingProbability === "Alta")) {
+        hotDeals += commission;
+      }
+
+      // 4. Comissão Fechada no Mês (stage: "Fechado")
+      if (stage === "Fechado") {
+        const closedDateStr = c.updatedAt || c.createdAt;
+        if (closedDateStr) {
+          const closedDate = new Date(closedDateStr);
+          if (closedDate.getFullYear() === currentYear && closedDate.getMonth() === currentMonth) {
+            closedMonth += commission;
+          }
+        }
+      }
+    });
+
+    // Check if there are closed deals in the current month. If none, we fallback to all closed deals.
+    const hasClosedThisMonth = clients.some(c => {
+      if (c.pipelineStatus !== "Fechado") return false;
+      const dateStr = c.updatedAt || c.createdAt;
+      if (!dateStr) return false;
+      const d = new Date(dateStr);
+      return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
+    });
+
+    if (!hasClosedThisMonth) {
+      // Sum all closed deals as fallback
+      clients.forEach(c => {
+        if (c.pipelineStatus === "Fechado") {
+          const budget = c.potentialValue || c.maxBudget || 0;
+          const pct = c.commissionPercent !== undefined ? c.commissionPercent : (currentUser?.defaultCommissionPercent ?? 5);
+          const commission = c.commissionForecast !== undefined ? c.commissionForecast : (budget * pct / 100);
+          closedMonth += commission;
+        }
+      });
+    }
+
+    return {
+      totalPotential,
+      openProposals,
+      hotDeals,
+      closedMonth
+    };
+  })();
 
   // Generate Suggested Tasks using Gemini AI
   const handleGenerateAiTasks = async () => {
@@ -310,6 +454,199 @@ export default function DashboardView({
             <span className="text-[10px] text-on-surface-variant/70 font-mono mt-1 bg-surface-container px-2 py-0.5 rounded-full">
               📍 {currentUser.primaryCity}
             </span>
+          </div>
+        )}
+      </section>
+
+      {/* SEÇÃO RECOMENDAÇÕES INTELIGENTES (PRÓXIMA MELHOR AÇÃO) */}
+      <section className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="space-y-1 text-left">
+            <h3 className="font-display text-title-lg text-primary font-bold flex items-center gap-2">
+              <span className="p-1.5 bg-secondary-container/20 text-secondary rounded-lg">
+                <Sparkles className="w-5 h-5 text-secondary animate-pulse" />
+              </span>
+              Recomendações Inteligentes
+            </h3>
+            <p className="text-xs text-on-surface-variant font-medium">
+              Próxima melhor ação gerada com inteligência para você focar nos clientes certos agora
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-lg flex items-center gap-1 ${
+              dbStatus?.geminiActive 
+                ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                : "bg-amber-100 text-amber-800 border border-amber-300"
+            }`}>
+              <Brain className="w-3.5 h-3.5" />
+              {dbStatus?.geminiActive ? "IA Metria Ativa" : "Motor de Regras Ativo"}
+            </span>
+
+            <button
+              onClick={fetchBestActions}
+              disabled={isLoadingBestActions}
+              className="p-1.5 hover:bg-surface-container-high rounded-lg border border-outline-variant/30 transition-colors cursor-pointer"
+              title="Recarregar recomendações"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-on-surface-variant ${isLoadingBestActions ? "animate-spin" : ""}`} />
+            </button>
+          </div>
+        </div>
+
+        {isLoadingBestActions ? (
+          <div className="bg-surface-container-lowest p-12 rounded-2xl border border-outline-variant/30 text-center flex flex-col items-center justify-center gap-3">
+            <Loader2 className="w-8 h-8 animate-spin text-secondary" />
+            <p className="text-xs text-on-surface-variant font-semibold">Analisando dados do CRM em tempo real...</p>
+          </div>
+        ) : bestActionStatus === "error" ? (
+          <div className="bg-red-50 p-6 rounded-2xl border border-red-100 flex flex-col items-center gap-3 text-center">
+            <AlertCircle className="w-8 h-8 text-red-500" />
+            <div>
+              <h4 className="font-bold text-red-900 text-sm">Falha ao analisar próximas ações</h4>
+              <p className="text-xs text-red-700 mt-1">Não foi possível carregar as recomendações de IA. Tente novamente.</p>
+            </div>
+            <button
+              onClick={fetchBestActions}
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg cursor-pointer"
+            >
+              Tentar Novamente
+            </button>
+          </div>
+        ) : bestActions.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {bestActions.map((action, idx) => {
+              const clientObj = clients.find(c => c.id === action.clientId || c._id === action.clientId || c.name === action.clientName);
+              const actionId = `${action.clientId}-${idx}`;
+              const isTaskAdded = taskAddedFeedback[actionId];
+
+              // Beautiful custom priority styling
+              let priorityBg = "bg-slate-100 border-slate-300 text-slate-800";
+              if (action.priority === "Crítica") {
+                priorityBg = "bg-red-100 border-red-300 text-red-800 animate-pulse";
+              } else if (action.priority === "Alta") {
+                priorityBg = "bg-orange-100 border-orange-300 text-orange-800";
+              } else if (action.priority === "Média") {
+                priorityBg = "bg-blue-100 border-blue-300 text-blue-800";
+              }
+
+              return (
+                <div
+                  key={actionId}
+                  className="p-5 bg-white border border-outline-variant/30 hover:border-secondary/40 hover:shadow-md rounded-2xl flex flex-col justify-between gap-4 transition-all text-left relative overflow-hidden"
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-secondary-container/20 text-secondary border border-secondary-container/30 rounded-full">
+                        {action.category || "Próxima Ação"}
+                      </span>
+                      <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${priorityBg}`}>
+                        {action.priority || "Média"}
+                      </span>
+                    </div>
+
+                    <div className="flex items-start gap-2">
+                      <div className="p-1.5 bg-surface-container rounded-lg shrink-0 mt-0.5">
+                        <UserIcon className="w-4 h-4 text-primary" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[10px] text-on-surface-variant/70 font-bold uppercase tracking-wider leading-none">Cliente / Lead</p>
+                        <p className="text-base font-black text-on-surface truncate mt-0.5">{action.clientName}</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5 pl-0.5">
+                      <p className="text-xs text-on-surface-variant font-semibold bg-surface-container-low px-3 py-2 rounded-xl border border-outline-variant/10 leading-relaxed">
+                        <strong className="text-primary font-bold">Motivo:</strong> {action.reason}
+                      </p>
+                      <p className="text-xs text-on-surface-variant font-semibold bg-secondary/5 px-3 py-2 rounded-xl border border-secondary/10 leading-relaxed">
+                        <strong className="text-secondary font-bold">Ação Sugerida:</strong> {action.suggestion}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-outline-variant/30 flex flex-wrap items-center justify-between gap-2">
+                    {/* Secondary View Profile button */}
+                    {clientObj ? (
+                      <button
+                        onClick={() => onSelectClient && onSelectClient(clientObj)}
+                        className="text-xs text-primary hover:text-primary/80 font-bold flex items-center gap-1 cursor-pointer"
+                      >
+                        Abrir Ficha <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    ) : (
+                      <span className="text-[10px] text-on-surface-variant/50 font-medium italic">Ficha indisponível</span>
+                    )}
+
+                    <div className="flex items-center gap-1.5 ml-auto">
+                      {/* Create Task automated button */}
+                      {action.actionType !== "open_client" && (
+                        <button
+                          onClick={() => handleExecuteAddTask(action, idx)}
+                          disabled={isTaskAdded || executingActionId === actionId}
+                          className={`px-3 py-1.5 border text-xs font-bold rounded-xl transition-all flex items-center gap-1 cursor-pointer shadow-sm ${
+                            isTaskAdded
+                              ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                              : "bg-surface-container-high hover:bg-surface-container-highest text-on-surface border-outline-variant"
+                          }`}
+                        >
+                          {executingActionId === actionId ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-on-surface-variant" />
+                          ) : isTaskAdded ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-emerald-600 font-bold" />
+                              <span>Agendado!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Calendar className="w-3.5 h-3.5 text-on-surface-variant" />
+                              <span>Agendar</span>
+                            </>
+                          )}
+                        </button>
+                      )}
+
+                      {/* WhatsApp Button */}
+                      {action.actionPayload?.phone ? (
+                        <a
+                          href={`https://wa.me/${action.actionPayload.phone.replace(/\D/g, "")}?text=${encodeURIComponent(
+                            action.actionPayload.message || `Olá, ${action.clientName.split(" ")[0]}! Aqui é o seu corretor do Metria CRM.`
+                          )}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center gap-1 shadow-sm hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5 fill-white text-emerald-600 shrink-0" />
+                          Chamar no WhatsApp
+                        </a>
+                      ) : (
+                        action.actionType === "open_client" && clientObj && (
+                          <button
+                            onClick={() => onSelectClient && onSelectClient(clientObj)}
+                            className="px-3.5 py-1.5 bg-primary text-on-primary hover:bg-primary/90 text-xs font-bold rounded-xl flex items-center gap-1 shadow-sm cursor-pointer"
+                          >
+                            <UserIcon className="w-3.5 h-3.5" />
+                            Ver Ficha Completa
+                          </button>
+                        )
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="bg-emerald-50/40 p-6 rounded-2xl border border-emerald-100 flex items-center gap-4 text-left">
+            <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 shadow-sm">
+              <CheckCircle2 className="w-7 h-7" />
+            </div>
+            <div>
+              <h4 className="font-display font-bold text-emerald-900 text-sm">Tudo impecavelmente em dia!</h4>
+              <p className="text-xs text-emerald-800 font-medium mt-0.5">
+                Não identificamos nenhuma oportunidade estagnada, pendência ou follow-up atrasado. Sua carteira de clientes está ativa e muito bem gerida!
+              </p>
+            </div>
           </div>
         )}
       </section>
@@ -730,6 +1067,140 @@ export default function DashboardView({
         );
       })()}
 
+      {/* SEÇÃO DINHEIRO EM JOGO: PREVISÃO DE COMISSÃO */}
+      {clients.length === 0 && proposals.length === 0 && visits.length === 0 ? (
+        <section className="space-y-4 animate-in fade-in duration-300">
+          <div className="space-y-1 text-left">
+            <h3 className="font-display text-title-lg text-primary font-bold flex items-center gap-2">
+              <span className="p-1.5 bg-emerald-500/10 rounded-lg">
+                <DollarSign className="w-5 h-5 text-emerald-600 animate-pulse" />
+              </span>
+              Desempenho & Relatórios de Vendas
+            </h3>
+            <p className="text-xs text-on-surface-variant font-medium">
+              Acompanhe sua receita potencial estimada, faturamento de comissão e metas de fechamento de negócios.
+            </p>
+          </div>
+
+          <div className="bg-surface-container-lowest p-8 sm:p-12 text-center rounded-2xl border border-outline-variant/30 shadow-sm space-y-6 max-w-4xl mx-auto flex flex-col items-center justify-center relative overflow-hidden">
+            {/* Visual background details */}
+            <div className="absolute top-0 right-0 opacity-[0.03] translate-x-12 -translate-y-12">
+              <Sparkles className="w-64 h-64 text-primary" />
+            </div>
+
+            <div className="w-20 h-20 rounded-full bg-primary/10 text-primary flex items-center justify-center shadow-inner relative z-10 animate-bounce">
+              <DollarSign className="w-10 h-10 stroke-[1.5]" />
+            </div>
+
+            <div className="space-y-2 relative z-10 max-w-md">
+              <h4 className="font-display text-lg sm:text-xl font-bold text-on-surface tracking-tight">
+                Os relatórios aparecerão quando você começar a cadastrar leads, visitas e propostas.
+              </h4>
+              <p className="text-xs sm:text-sm text-on-surface-variant/80 leading-relaxed">
+                Com o Metria, você acompanha o funil de conversão, metas mensais e previsão de comissão. Cadastre dados reais ou ative o Modo Demonstração para ver este painel preenchido.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-3 justify-center relative z-10">
+              <button
+                onClick={() => onNavigateToTab("clients")}
+                className="px-5 py-2.5 bg-primary hover:bg-primary/95 text-on-primary font-bold text-xs rounded-xl shadow-md active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Plus className="w-4 h-4 stroke-[2.5]" />
+                Cadastrar primeiro lead
+              </button>
+              <button
+                onClick={() => onNavigateToTab("properties")}
+                className="px-5 py-2.5 bg-white hover:bg-surface-container text-primary border border-outline-variant rounded-xl text-xs font-bold shadow-sm active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Home className="w-4 h-4 stroke-[2]" />
+                Ver Imóveis
+              </button>
+            </div>
+          </div>
+        </section>
+      ) : (
+        <section className="space-y-4">
+        <div className="space-y-1 text-left">
+          <h3 className="font-display text-title-lg text-primary font-bold flex items-center gap-2">
+            <span className="p-1.5 bg-emerald-500/10 rounded-lg">
+              <DollarSign className="w-5 h-5 text-emerald-600 animate-pulse" />
+            </span>
+            Dinheiro em Jogo • Previsão de Comissão do Corretor
+          </h3>
+          <p className="text-xs text-on-surface-variant font-medium">
+            Fique de olho nas comissões estimadas das suas negociações em aberto para bater suas metas. (Valores estimados baseados no VGV das negociações)
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Card 1: Comissão Potencial Total */}
+          <div className="bg-gradient-to-br from-indigo-500/5 to-indigo-500/10 p-5 rounded-2xl border border-indigo-500/20 shadow-sm flex flex-col justify-between h-32 relative overflow-hidden text-left">
+            <div className="absolute right-0 bottom-0 opacity-10 translate-x-2 translate-y-2">
+              <DollarSign className="w-20 h-20 text-indigo-600" />
+            </div>
+            <div>
+              <span className="text-[9px] font-extrabold text-indigo-800 dark:text-indigo-400 uppercase tracking-widest bg-indigo-500/10 px-2 py-0.5 rounded-full">
+                Em aberto
+              </span>
+              <p className="font-label-md text-xs text-on-surface-variant font-semibold mt-2">Comissão Potencial Total</p>
+            </div>
+            <p className="font-display text-lg sm:text-xl font-black text-indigo-950 dark:text-indigo-200">
+              R$ {commissionMetrics.totalPotential.toLocaleString("pt-BR")}
+            </p>
+          </div>
+
+          {/* Card 2: Comissão em Propostas Abertas */}
+          <div className="bg-gradient-to-br from-violet-500/5 to-violet-500/10 p-5 rounded-2xl border border-violet-500/20 shadow-sm flex flex-col justify-between h-32 relative overflow-hidden text-left">
+            <div className="absolute right-0 bottom-0 opacity-10 translate-x-2 translate-y-2">
+              <DollarSign className="w-20 h-20 text-violet-600" />
+            </div>
+            <div>
+              <span className="text-[9px] font-extrabold text-violet-800 dark:text-violet-400 uppercase tracking-widest bg-violet-500/10 px-2 py-0.5 rounded-full">
+                Propostas abertas
+              </span>
+              <p className="font-label-md text-xs text-on-surface-variant font-semibold mt-2">Em Propostas Abertas</p>
+            </div>
+            <p className="font-display text-lg sm:text-xl font-black text-violet-950 dark:text-violet-200">
+              R$ {commissionMetrics.openProposals.toLocaleString("pt-BR")}
+            </p>
+          </div>
+
+          {/* Card 3: Comissão em Negociações Quentes */}
+          <div className="bg-gradient-to-br from-orange-500/5 to-orange-500/10 p-5 rounded-2xl border border-orange-500/20 shadow-sm flex flex-col justify-between h-32 relative overflow-hidden text-left">
+            <div className="absolute right-0 bottom-0 opacity-10 translate-x-2 translate-y-2">
+              <Flame className="w-20 h-20 text-orange-600" />
+            </div>
+            <div>
+              <span className="text-[9px] font-extrabold text-orange-800 dark:text-orange-400 uppercase tracking-widest bg-orange-500/10 px-2 py-0.5 rounded-full">
+                Quentes / Alta Prob.
+              </span>
+              <p className="font-label-md text-xs text-on-surface-variant font-semibold mt-2">Negociações Quentes</p>
+            </div>
+            <p className="font-display text-lg sm:text-xl font-black text-orange-950 dark:text-orange-200">
+              R$ {commissionMetrics.hotDeals.toLocaleString("pt-BR")}
+            </p>
+          </div>
+
+          {/* Card 4: Comissão Fechada no Mês */}
+          <div className="bg-gradient-to-br from-emerald-500/5 to-emerald-500/10 p-5 rounded-2xl border border-emerald-500/20 shadow-sm flex flex-col justify-between h-32 relative overflow-hidden text-left">
+            <div className="absolute right-0 bottom-0 opacity-10 translate-x-2 translate-y-2">
+              <CheckCircle2 className="w-20 h-20 text-emerald-600" />
+            </div>
+            <div>
+              <span className="text-[9px] font-extrabold text-emerald-800 dark:text-emerald-400 uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                Fechado 🎉
+              </span>
+              <p className="font-label-md text-xs text-on-surface-variant font-semibold mt-2">Fechada no Mês</p>
+            </div>
+            <p className="font-display text-lg sm:text-xl font-black text-emerald-950 dark:text-emerald-200">
+              R$ {commissionMetrics.closedMonth.toLocaleString("pt-BR")}
+            </p>
+          </div>
+        </div>
+      </section>
+      )}
+
       {/* Quick Metrics Bento Grid */}
       <section className="grid grid-cols-2 md:grid-cols-3 gap-4">
         {/* Metric 1 */}
@@ -770,6 +1241,7 @@ export default function DashboardView({
       </section>
 
       {/* Progress & Upcoming Visits row */}
+      {!(clients.length === 0 && proposals.length === 0 && visits.length === 0) && (
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         
         {/* Goals Radial Chart */}
@@ -841,6 +1313,7 @@ export default function DashboardView({
         </section>
 
       </div>
+      )}
 
       {/* AI Task Recommender Widget (Gemini integration!) */}
       <section className="relative bg-gradient-to-br from-primary-container/10 via-white to-primary-container/15 rounded-2xl p-6 border-2 border-primary-container/25 overflow-hidden shadow-sm">

@@ -95,6 +95,30 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
     setLoginPassword("123");
   };
 
+  const handleStartDemo = () => {
+    const demoUser: User = {
+      id: "demo-user-1",
+      username: "carlos_demo",
+      name: "Carlos Brito (Demonstração)",
+      email: "carlos.brito@metriacrm.com.br",
+      avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80",
+      role: "Corretor Sênior",
+      phone: "(34) 99123-4567",
+      creci: "MG-12345",
+      primaryCity: "Uberlândia / MG",
+      actingType: "Geral",
+      isDemo: true,
+      onboardingCompleted: true,
+      sessionToken: "demo_token_123"
+    };
+    
+    // Save to localStorage immediately so that API interceptor is active
+    localStorage.setItem("vega_crm_user", JSON.stringify(demoUser));
+    
+    // Trigger login success in App
+    onLoginSuccess(demoUser);
+  };
+
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 relative overflow-hidden select-none">
       {/* Decorative background glows */}
@@ -185,6 +209,15 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
                 ) : (
                   "Entrar no Metria CRM"
                 )}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleStartDemo}
+                className="w-full py-3 bg-surface border-2 border-primary/30 text-primary font-bold text-sm rounded-xl hover:bg-primary/5 active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+              >
+                <Briefcase className="w-4 h-4" />
+                Ver Demonstração Profissional
               </button>
 
               <div className="flex flex-col gap-2 pt-2 text-center">

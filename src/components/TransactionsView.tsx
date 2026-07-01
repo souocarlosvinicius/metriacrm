@@ -261,17 +261,22 @@ export default function TransactionsView({
         {subTab === "proposals" ? (
           /* PROPOSALS LIST */
           filteredProposals.length === 0 ? (
-            <div className="bg-surface-container-lowest p-12 text-center rounded-2xl border border-outline-variant/20 shadow-sm space-y-3">
-              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto text-primary">
-                <Handshake className="w-6 h-6" />
+            <div className="flex flex-col items-center justify-center text-center py-20 px-6 text-on-surface-variant bg-surface-container-low rounded-3xl border border-dashed border-outline-variant/60 shadow-sm animate-in fade-in duration-300 max-w-2xl mx-auto my-4">
+              <div className="w-16 h-16 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-5 shadow-inner">
+                <Handshake className="w-8 h-8 stroke-[1.5]" />
               </div>
-              <h3 className="text-sm font-bold text-on-surface">Nenhuma proposta cadastrada</h3>
-              <p className="text-xs text-on-surface-variant max-w-xs mx-auto">Cadastre propostas de compra ou locação feitas por seus clientes para acompanhar as negociações.</p>
+              <h3 className="font-display text-xl font-bold text-on-surface tracking-tight">
+                Nenhuma proposta cadastrada
+              </h3>
+              <p className="text-sm opacity-90 mt-2 max-w-md leading-relaxed">
+                Cadastre propostas de compra ou locação feitas por seus clientes para acompanhar as negociações.
+              </p>
               <button
                 onClick={handleOpenNewProposal}
-                className="inline-flex items-center gap-1.5 text-xs text-primary font-bold hover:underline"
+                className="mt-6 px-6 py-3 bg-primary hover:bg-primary/95 text-on-primary font-bold text-sm rounded-xl transition-all shadow-md active:scale-95 flex items-center gap-2 hover:shadow-lg cursor-pointer"
               >
-                Cadastrar primeira proposta <ArrowUpRight className="w-3.5 h-3.5" />
+                <Plus className="w-4 h-4 stroke-[2.5]" />
+                Cadastrar primeira proposta
               </button>
             </div>
           ) : (
@@ -357,17 +362,22 @@ export default function TransactionsView({
         ) : (
           /* VISITS LIST */
           filteredVisits.length === 0 ? (
-            <div className="bg-surface-container-lowest p-12 text-center rounded-2xl border border-outline-variant/20 shadow-sm space-y-3">
-              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto text-primary">
-                <Calendar className="w-6 h-6" />
+            <div className="flex flex-col items-center justify-center text-center py-20 px-6 text-on-surface-variant bg-surface-container-low rounded-3xl border border-dashed border-outline-variant/60 shadow-sm animate-in fade-in duration-300 max-w-2xl mx-auto my-4">
+              <div className="w-16 h-16 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-5 shadow-inner">
+                <Calendar className="w-8 h-8 stroke-[1.5]" />
               </div>
-              <h3 className="text-sm font-bold text-on-surface">Nenhuma visita agendada</h3>
-              <p className="text-xs text-on-surface-variant max-w-xs mx-auto">Mantenha sua agenda organizada registrando as visitas guiadas que você tem com seus clientes compradores.</p>
+              <h3 className="font-display text-xl font-bold text-on-surface tracking-tight">
+                Nenhuma visita agendada
+              </h3>
+              <p className="text-sm opacity-90 mt-2 max-w-md leading-relaxed">
+                Mantenha sua agenda organizada registrando as visitas guiadas que você tem com seus clientes compradores.
+              </p>
               <button
                 onClick={handleOpenNewVisit}
-                className="inline-flex items-center gap-1.5 text-xs text-primary font-bold hover:underline"
+                className="mt-6 px-6 py-3 bg-primary hover:bg-primary/95 text-on-primary font-bold text-sm rounded-xl transition-all shadow-md active:scale-95 flex items-center gap-2 hover:shadow-lg cursor-pointer"
               >
-                Agendar primeira visita <ArrowUpRight className="w-3.5 h-3.5" />
+                <Plus className="w-4 h-4 stroke-[2.5]" />
+                Agendar primeira visita
               </button>
             </div>
           ) : (

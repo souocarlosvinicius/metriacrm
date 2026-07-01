@@ -496,15 +496,29 @@ export default function TasksView({
                   );
                 })
               ) : (
-                <div className="flex flex-col items-center justify-center text-center py-16 text-on-surface-variant bg-surface-container-low rounded-3xl border border-dashed border-outline-variant/40">
-                  <ListChecks className="w-10 h-10 text-outline-variant stroke-[1.5] mb-2" />
-                  <p className="font-bold text-sm">Sem tarefas nesta visualização</p>
-                  <p className="text-xs text-on-surface-variant/80 mt-1 max-w-xs leading-relaxed">
-                    {activeTab === "hoje" && "Tudo limpo por hoje! Aproveite para prospectar ou revisar sua lista de contatos."}
-                    {activeTab === "atrasadas" && "Parabéns! Nenhuma tarefa está em atraso no momento."}
-                    {activeTab === "proximos_7" && "Nenhuma atividade agendada para os próximos 7 dias."}
-                    {activeTab === "concluidas" && "Histórico de atividades concluídas está vazio."}
+                <div className="flex flex-col items-center justify-center text-center py-20 px-6 text-on-surface-variant bg-surface-container-low rounded-3xl border border-dashed border-outline-variant/60 shadow-sm animate-in fade-in duration-300 max-w-2xl mx-auto my-4">
+                  <div className="w-16 h-16 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-5 shadow-inner animate-pulse">
+                    <ListChecks className="w-8 h-8 stroke-[1.5]" />
+                  </div>
+                  <h3 className="font-display text-xl font-bold text-on-surface tracking-tight">
+                    {activeTab === "hoje" ? "Nenhuma tarefa para hoje." : "Sem tarefas nesta visualização."}
+                  </h3>
+                  <p className="text-sm opacity-90 mt-2 max-w-md leading-relaxed">
+                    {activeTab === "hoje" 
+                      ? "Crie lembretes para retornos, visitas e propostas."
+                      : activeTab === "atrasadas"
+                      ? "Excelente! Você não possui nenhum acompanhamento pendente no passado."
+                      : activeTab === "proximos_7"
+                      ? "Sua agenda de follow-ups para os próximos dias está livre. Que tal planejar novas conexões?"
+                      : "Seu histórico de atividades concluídas está vazio no momento."}
                   </p>
+                  <button
+                    onClick={() => setShowAddForm(true)}
+                    className="mt-6 px-6 py-3 bg-primary hover:bg-primary/95 text-on-primary font-bold text-sm rounded-xl transition-all shadow-md active:scale-95 flex items-center gap-2 hover:shadow-lg cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4 stroke-[2.5]" />
+                    Criar tarefa
+                  </button>
                 </div>
               )}
             </div>

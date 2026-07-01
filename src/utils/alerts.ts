@@ -34,7 +34,7 @@ export function getClientAlerts(
 ): Alert[] {
   const alerts: Alert[] = [];
   const clientId = client.id || client._id?.toString() || "";
-  const clientNameLower = client.name.toLowerCase();
+  const clientNameLower = (client.name || "").toLowerCase();
 
   // Helper to check if a task belongs to this client
   const clientTasks = allTasks.filter(t => {
