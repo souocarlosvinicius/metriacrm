@@ -32,7 +32,15 @@ export function verifyPassword(password: string, storedHash: string): boolean {
   const iterations = parts[2] ? parseInt(parts[2], 10) : 1000;
   
   const testHash = crypto.pbkdf2Sync(password, salt, iterations, KEY_LEN, DIGEST).toString("hex");
-  return hash === testHash;
+  
+  const hashBuf = Buffer.from(hash, "hex");
+  const testHashBuf = Buffer.from(testHash, "hex");
+  
+  if (hashBuf.length !== testHashBuf.length) {
+    return false;
+  }
+  
+  return crypto.timingSafeEqual(hashBuf, testHashBuf);
 }
 
 /**

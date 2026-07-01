@@ -47,24 +47,17 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
   if (!isDemoSession() && !url.includes("/api/demo/reset") && !url.includes("isDemo=true")) {
     if (url.startsWith("/api/")) {
       init = init || {};
-      init.credentials = init.credentials || "same-origin";
-      const saved = localStorage.getItem("vega_crm_user");
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          if (parsed && parsed.sessionToken) {
-            const headers = new Headers(init.headers || {});
-            if (!headers.has("Authorization")) {
-              headers.set("Authorization", `Bearer ${parsed.sessionToken}`);
-            }
-            init.headers = headers;
-          }
-        } catch (e) {
-          console.error("Error parsing user session for fetch interceptor:", e);
-        }
-      }
+      init.credentials = "include"; // Use httpOnly cookie authentication securely
     }
-    return window.fetch(input, init);
+    const response = await window.fetch(input, init);
+
+    // Auto-logout if unauthorized (401) on protected routes
+    if (response.status === 401 && !url.includes("/api/auth/me") && !url.includes("/api/auth/login") && !url.includes("/api/auth/register")) {
+      localStorage.removeItem("vega_crm_user");
+      window.dispatchEvent(new Event("auth_unauthorized"));
+    }
+
+    return response;
   }
 
   // --- DEMO MODE ACTIVE: INTERCEPTING ALL API CALLS ---

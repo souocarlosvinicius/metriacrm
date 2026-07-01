@@ -2,7 +2,7 @@ import { MongoClient, Db, ObjectId } from "mongodb";
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
-import { hashPassword, verifyPassword, isPlaintextPassword } from "./crypto.js";
+import { hashPassword, verifyPassword } from "./crypto.js";
 
 export interface Property {
   id?: string;
@@ -603,7 +603,10 @@ class DatabaseConnection {
 
   // --- SESSIONS (Stateless Signed Tokens using SESSION_SECRET) ---
   public createSession(userId: string): string {
-    const sessionSecret = process.env.SESSION_SECRET || "metria-crm-fallback-session-secret-2026";
+    const sessionSecret = process.env.SESSION_SECRET || (process.env.NODE_ENV === "production" ? "" : "metria-crm-development-only-session-secret-key-2026");
+    if (!sessionSecret) {
+      throw new Error("A variável de ambiente SESSION_SECRET é obrigatória mas não está configurada.");
+    }
     const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000; // 30 days (aligned with cookie)
     const payload = JSON.stringify({ userId, expiresAt });
     const payloadB64 = Buffer.from(payload).toString("base64url");
@@ -622,7 +625,10 @@ class DatabaseConnection {
     if (parts.length !== 2) return null;
     
     const [payloadB64, signature] = parts;
-    const sessionSecret = process.env.SESSION_SECRET || "metria-crm-fallback-session-secret-2026";
+    const sessionSecret = process.env.SESSION_SECRET || (process.env.NODE_ENV === "production" ? "" : "metria-crm-development-only-session-secret-key-2026");
+    if (!sessionSecret) {
+      return null;
+    }
     
     const expectedSignature = crypto
       .createHmac("sha256", sessionSecret)
@@ -1204,21 +1210,7 @@ class DatabaseConnection {
       if (!user) return null;
 
       const storedPassword = user.password || "";
-      let isValid = false;
-
-      if (isPlaintextPassword(storedPassword)) {
-        // Secure upgrade for legacy plaintext password
-        isValid = password === storedPassword;
-        if (isValid) {
-          const newHashed = hashPassword(password);
-          await this.db.collection("users").updateOne(
-            { _id: user._id },
-            { $set: { password: newHashed } }
-          );
-        }
-      } else {
-        isValid = verifyPassword(password, storedPassword);
-      }
+      const isValid = verifyPassword(password, storedPassword);
 
       if (!isValid) return null;
 
@@ -1234,23 +1226,7 @@ class DatabaseConnection {
       if (!user) return null;
 
       const storedPassword = user.password || "";
-      let isValid = false;
-
-      if (isPlaintextPassword(storedPassword)) {
-        // Secure upgrade for legacy plaintext password
-        isValid = password === storedPassword;
-        if (isValid) {
-          const newHashed = hashPassword(password);
-          const data = this.readLocalJson();
-          const uIdx = data.users.findIndex((u: any) => u.id === user.id);
-          if (uIdx !== -1) {
-            data.users[uIdx].password = newHashed;
-            this.writeLocalJson(data);
-          }
-        }
-      } else {
-        isValid = verifyPassword(password, storedPassword);
-      }
+      const isValid = verifyPassword(password, storedPassword);
 
       if (!isValid) return null;
 

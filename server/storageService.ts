@@ -27,15 +27,28 @@ export async function uploadImage(base64DataUrl: string): Promise<string> {
     throw new Error("Formato de imagem inválido.");
   }
 
-  const contentType = matches[1];
+  const contentType = matches[1].toLowerCase();
   const base64Data = matches[2];
   const buffer = Buffer.from(base64Data, "base64");
 
-  // Generate unique filename
-  let extension = contentType.split("/")[1] || "jpg";
-  // Handle jpeg extension edge case
-  if (extension === "jpeg") extension = "jpg";
-  
+  // Size limit validation (10MB maximum per image)
+  const MAX_SIZE = 10 * 1024 * 1024;
+  if (buffer.length > MAX_SIZE) {
+    throw new Error("Tamanho máximo de imagem excedido (limite de 10MB).");
+  }
+
+  // Strict MIME type validation & safe extension mapping to avoid executable injection
+  let extension = "";
+  if (contentType === "image/jpeg" || contentType === "image/jpg") {
+    extension = "jpg";
+  } else if (contentType === "image/png") {
+    extension = "png";
+  } else if (contentType === "image/webp") {
+    extension = "webp";
+  } else {
+    throw new Error("Tipo de arquivo não permitido. Apenas imagens JPG, PNG ou WEBP são aceitas.");
+  }
+
   const uniqueId = crypto.randomBytes(12).toString("hex");
   const filename = `${uniqueId}.${extension}`;
   const filePath = path.join(UPLOADS_DIR, filename);
@@ -44,7 +57,6 @@ export async function uploadImage(base64DataUrl: string): Promise<string> {
   await fs.promises.writeFile(filePath, buffer);
 
   // Return the public URL path
-  // Since we serve '/uploads' statically, this URL will work perfectly in development & production
   return `/uploads/${filename}`;
 }
 

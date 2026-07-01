@@ -63,14 +63,14 @@ export default function TransactionsView({
 
   // Filter lists based on search
   const filteredProposals = proposals.filter(p => 
-    p.clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    p.propertyTitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (p.clientName || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (p.propertyTitle || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
     (p.observations || "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const filteredVisits = visits.filter(v => 
-    v.clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    v.propertyTitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (v.clientName || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (v.propertyTitle || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
     (v.observations || "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 

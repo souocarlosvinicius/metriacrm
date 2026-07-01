@@ -174,6 +174,19 @@ function getFallbackTasks(clients: any[] = [], properties: any[] = []) {
 }
 
 async function startServer() {
+  const isProduction = process.env.NODE_ENV === "production";
+  
+  if (isProduction) {
+    if (!process.env.SESSION_SECRET) {
+      console.error("FATAL ERROR: A variável de ambiente SESSION_SECRET é obrigatória em produção!");
+      process.exit(1);
+    }
+    if (!process.env.MONGODB_URI) {
+      console.error("FATAL ERROR: A variável de ambiente MONGODB_URI é obrigatória em produção!");
+      process.exit(1);
+    }
+  }
+
   const app = express();
   const PORT = 3000;
 

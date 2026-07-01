@@ -91,12 +91,6 @@ export default function LoginView({ onLoginSuccess, initialRegister = false, onB
     }
   };
 
-  // Pre-fill demo login to make it extremely frictionless for the evaluator
-  const fillDemoCredentials = () => {
-    setLoginUsername("vega");
-    setLoginPassword("123");
-  };
-
   const handleStartDemo = () => {
     const demoUser: User = {
       id: "demo-user-1",
@@ -226,14 +220,6 @@ export default function LoginView({ onLoginSuccess, initialRegister = false, onB
               </button>
 
               <div className="flex flex-col gap-2 pt-2 text-center">
-                <button
-                  type="button"
-                  onClick={fillDemoCredentials}
-                  className="text-xs font-bold text-primary/80 hover:text-primary transition-colors cursor-pointer"
-                >
-                  💡 Usar Usuário de Demonstração (vega / 123)
-                </button>
-
                 <div className="text-xs text-on-surface-variant">
                   Não possui conta?{" "}
                   <button

@@ -27,6 +27,11 @@ export default function App() {
 
   // Check session on mount
   useEffect(() => {
+    const handleUnauthorized = () => {
+      setCurrentUser(null);
+    };
+    window.addEventListener("auth_unauthorized", handleUnauthorized);
+
     const verifySession = async () => {
       try {
         const res = await apiFetch("/api/auth/me");
@@ -67,6 +72,10 @@ export default function App() {
       }
     };
     verifySession();
+
+    return () => {
+      window.removeEventListener("auth_unauthorized", handleUnauthorized);
+    };
   }, []);
 
   const [activeTab, setActiveTab] = useState<string>("dashboard");
