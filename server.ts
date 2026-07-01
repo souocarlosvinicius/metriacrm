@@ -254,8 +254,17 @@ async function startServer() {
     }
   });
 
+  // Middleware to validate MongoDB ObjectId
+  const validateId = (req: any, res: any, next: any) => {
+    const { id } = req.params;
+    if (id && db.isMongoActive() && !/^[0-9a-fA-F]{24}$/.test(id)) {
+      return res.status(400).json({ error: "Formato de ID inválido" });
+    }
+    next();
+  };
+
   // Get property by ID
-  app.get("/api/properties/:id", requireAuth, async (req: any, res) => {
+  app.get("/api/properties/:id", requireAuth, validateId, async (req: any, res) => {
     try {
       const property = await db.getPropertyById(req.params.id, req.userId);
       if (!property) {
@@ -293,7 +302,7 @@ async function startServer() {
   });
 
   // Update property
-  app.put("/api/properties/:id", requireAuth, async (req: any, res) => {
+  app.put("/api/properties/:id", requireAuth, validateId, async (req: any, res) => {
     try {
       const updated = await db.updateProperty(req.params.id, req.body, req.userId);
       if (!updated) {
@@ -306,7 +315,7 @@ async function startServer() {
   });
 
   // Delete property
-  app.delete("/api/properties/:id", requireAuth, async (req: any, res) => {
+  app.delete("/api/properties/:id", requireAuth, validateId, async (req: any, res) => {
     try {
       const success = await db.deleteProperty(req.params.id, req.userId);
       if (!success) {
@@ -349,7 +358,7 @@ async function startServer() {
   });
 
   // Get client by ID
-  app.get("/api/clients/:id", requireAuth, async (req: any, res) => {
+  app.get("/api/clients/:id", requireAuth, validateId, async (req: any, res) => {
     try {
       const client = await db.getClientById(req.params.id, req.userId);
       if (!client) {
@@ -372,7 +381,7 @@ async function startServer() {
   });
 
   // Update client
-  app.put("/api/clients/:id", requireAuth, async (req: any, res) => {
+  app.put("/api/clients/:id", requireAuth, validateId, async (req: any, res) => {
     try {
       const clientId = req.params.id;
       const oldClient = await db.getClientById(clientId, req.userId);
@@ -450,7 +459,7 @@ async function startServer() {
   });
 
   // Delete client
-  app.delete("/api/clients/:id", requireAuth, async (req: any, res) => {
+  app.delete("/api/clients/:id", requireAuth, validateId, async (req: any, res) => {
     try {
       const success = await db.deleteClient(req.params.id, req.userId);
       if (!success) {
@@ -530,7 +539,7 @@ async function startServer() {
   });
 
   // Update task
-  app.put("/api/tasks/:id", requireAuth, async (req: any, res) => {
+  app.put("/api/tasks/:id", requireAuth, validateId, async (req: any, res) => {
     try {
       // Get the original task before updating to check for status change (completion)
       const tasksBefore = await db.getTasks(req.userId);
@@ -583,7 +592,7 @@ async function startServer() {
   });
 
   // Delete task
-  app.delete("/api/tasks/:id", requireAuth, async (req: any, res) => {
+  app.delete("/api/tasks/:id", requireAuth, validateId, async (req: any, res) => {
     try {
       const success = await db.deleteTask(req.params.id, req.userId);
       if (!success) {
@@ -643,14 +652,14 @@ async function startServer() {
         }
       }
 
-      res.status(211).json(proposal);
+      res.status(201).json(proposal);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
   // Update proposal
-  app.put("/api/proposals/:id", requireAuth, async (req: any, res) => {
+  app.put("/api/proposals/:id", requireAuth, validateId, async (req: any, res) => {
     try {
       const updated = await db.updateProposal(req.params.id, req.body, req.userId);
       if (!updated) {
@@ -663,7 +672,7 @@ async function startServer() {
   });
 
   // Delete proposal
-  app.delete("/api/proposals/:id", requireAuth, async (req: any, res) => {
+  app.delete("/api/proposals/:id", requireAuth, validateId, async (req: any, res) => {
     try {
       const success = await db.deleteProposal(req.params.id, req.userId);
       if (!success) {
@@ -723,14 +732,14 @@ async function startServer() {
         }
       }
 
-      res.status(211).json(visit);
+      res.status(201).json(visit);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
   // Update visit
-  app.put("/api/visits/:id", requireAuth, async (req: any, res) => {
+  app.put("/api/visits/:id", requireAuth, validateId, async (req: any, res) => {
     try {
       const updated = await db.updateVisit(req.params.id, req.body, req.userId);
       if (!updated) {
@@ -743,7 +752,7 @@ async function startServer() {
   });
 
   // Delete visit
-  app.delete("/api/visits/:id", requireAuth, async (req: any, res) => {
+  app.delete("/api/visits/:id", requireAuth, validateId, async (req: any, res) => {
     try {
       const success = await db.deleteVisit(req.params.id, req.userId);
       if (!success) {
@@ -1280,7 +1289,7 @@ Retorne APENAS o array JSON válido no formato esperado.`;
       }
 
       const { password: _, ...clean } = user;
-      res.json({ ...clean, sessionToken: token });
+      res.json(clean);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -1308,7 +1317,7 @@ Retorne APENAS o array JSON válido no formato esperado.`;
         path: "/"
       });
 
-      res.json({ ...user, sessionToken });
+      res.json(user);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -1352,7 +1361,7 @@ Retorne APENAS o array JSON válido no formato esperado.`;
         path: "/"
       });
 
-      res.status(201).json({ ...newUser, sessionToken });
+      res.status(201).json(newUser);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -1377,7 +1386,7 @@ Retorne APENAS o array JSON válido no formato esperado.`;
   });
 
   // Update user profile (Only authenticated and owner)
-  app.put("/api/auth/update/:id", requireAuth, async (req: any, res) => {
+  app.put("/api/auth/update/:id", requireAuth, validateId, async (req: any, res) => {
     try {
       const { id } = req.params;
       

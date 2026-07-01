@@ -2,7 +2,7 @@ import { MongoClient, Db, ObjectId } from "mongodb";
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
-import { hashPassword, verifyPassword } from "./crypto.js";
+import { hashPassword, verifyPassword, isPlaintextPassword } from "./crypto.js";
 
 export interface Property {
   id?: string;
@@ -458,17 +458,7 @@ const defaultTasks: Task[] = [
   }
 ];
 
-const defaultUsers: User[] = [
-  {
-    username: "vega",
-    password: "123",
-    name: "Carlos Eduardo",
-    email: "carlos@metriacrm.com",
-    avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80",
-    role: "Corretor Sênior",
-    phone: "(11) 98765-4321"
-  }
-];
+const defaultUsers: User[] = [];
 
 class DatabaseConnection {
   private mongoClient: MongoClient | null = null;
@@ -611,28 +601,53 @@ class DatabaseConnection {
     return this.isUsingMongo;
   }
 
-  // --- SESSIONS ---
-  private sessions = new Map<string, { userId: string; expiresAt: number }>();
-
+  // --- SESSIONS (Stateless Signed Tokens using SESSION_SECRET) ---
   public createSession(userId: string): string {
-    const token = crypto.randomBytes(32).toString("hex");
-    const expiresAt = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
-    this.sessions.set(token, { userId, expiresAt });
-    return token;
+    const sessionSecret = process.env.SESSION_SECRET || "metria-crm-fallback-session-secret-2026";
+    const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000; // 30 days (aligned with cookie)
+    const payload = JSON.stringify({ userId, expiresAt });
+    const payloadB64 = Buffer.from(payload).toString("base64url");
+    
+    const signature = crypto
+      .createHmac("sha256", sessionSecret)
+      .update(payloadB64)
+      .digest("base64url");
+      
+    return `${payloadB64}.${signature}`;
   }
 
   public getSession(token: string): { userId: string } | null {
-    const session = this.sessions.get(token);
-    if (!session) return null;
-    if (Date.now() > session.expiresAt) {
-      this.sessions.delete(token);
+    if (!token) return null;
+    const parts = token.split(".");
+    if (parts.length !== 2) return null;
+    
+    const [payloadB64, signature] = parts;
+    const sessionSecret = process.env.SESSION_SECRET || "metria-crm-fallback-session-secret-2026";
+    
+    const expectedSignature = crypto
+      .createHmac("sha256", sessionSecret)
+      .update(payloadB64)
+      .digest("base64url");
+      
+    if (signature !== expectedSignature) {
       return null;
     }
-    return { userId: session.userId };
+    
+    try {
+      const payloadStr = Buffer.from(payloadB64, "base64url").toString("utf8");
+      const parsed = JSON.parse(payloadStr);
+      if (Date.now() > parsed.expiresAt) {
+        return null;
+      }
+      return { userId: parsed.userId };
+    } catch (err) {
+      return null;
+    }
   }
 
   public deleteSession(token: string): void {
-    this.sessions.delete(token);
+    // Stateless session tokens do not need server-side state deletion.
+    // Cleared on logout by deleting cookie.
   }
 
   // --- SEED USER WORKSPACE ---
@@ -690,24 +705,14 @@ class DatabaseConnection {
   public async getProperties(userId: string): Promise<Property[]> {
     let properties: Property[] = [];
     if (this.isUsingMongo && this.db) {
-      const list = await this.db.collection("properties").find({
-        $or: [
-          { userId: userId },
-          { userId: { $exists: false } }
-        ]
-      }).toArray();
+      const list = await this.db.collection("properties").find({ userId }).toArray();
       properties = list.map((item: any) => ({
         ...item,
         id: item._id.toString(),
       })) as Property[];
-
-      // Filter legacy data if the user is not vega
-      if (userId !== "user-1" && userId !== "vega") {
-        properties = properties.filter(p => p.userId === userId);
-      }
     } else {
       const data = this.readLocalJson();
-      properties = data.properties.filter(p => p.userId === userId || (!p.userId && (userId === "user-1" || userId === "vega")));
+      properties = data.properties.filter(p => p.userId === userId);
     }
 
     // Ensure all properties have a unique code (e.g. IM-1234)
@@ -769,10 +774,8 @@ class DatabaseConnection {
 
   public async updateProperty(id: string, updates: Partial<Property>, userId: string): Promise<Property | null> {
     if (this.isUsingMongo && this.db) {
-      const filterQuery: any = { _id: new ObjectId(id) };
-      if (userId !== "user-1" && userId !== "vega") {
-        filterQuery.userId = userId;
-      }
+      if (!ObjectId.isValid(id)) return null;
+      const filterQuery = { _id: new ObjectId(id), userId };
       await this.db.collection("properties").updateOne(
         filterQuery,
         { $set: updates }
@@ -785,7 +788,7 @@ class DatabaseConnection {
       
       // Verify owner
       const item = data.properties[idx];
-      const isOwner = item.userId === userId || (!item.userId && (userId === "user-1" || userId === "vega"));
+      const isOwner = item.userId === userId;
       if (!isOwner) return null;
 
       data.properties[idx] = { ...data.properties[idx], ...updates };
@@ -796,10 +799,8 @@ class DatabaseConnection {
 
   public async deleteProperty(id: string, userId: string): Promise<boolean> {
     if (this.isUsingMongo && this.db) {
-      const filterQuery: any = { _id: new ObjectId(id) };
-      if (userId !== "user-1" && userId !== "vega") {
-        filterQuery.userId = userId;
-      }
+      if (!ObjectId.isValid(id)) return false;
+      const filterQuery = { _id: new ObjectId(id), userId };
       const res = await this.db.collection("properties").deleteOne(filterQuery);
       return res.deletedCount > 0;
     } else {
@@ -808,7 +809,7 @@ class DatabaseConnection {
       if (idx === -1) return false;
 
       const item = data.properties[idx];
-      const isOwner = item.userId === userId || (!item.userId && (userId === "user-1" || userId === "vega"));
+      const isOwner = item.userId === userId;
       if (!isOwner) return false;
 
       data.properties.splice(idx, 1);
@@ -821,23 +822,14 @@ class DatabaseConnection {
   public async getClients(userId: string): Promise<Client[]> {
     let clients: Client[] = [];
     if (this.isUsingMongo && this.db) {
-      const list = await this.db.collection("clients").find({
-        $or: [
-          { userId: userId },
-          { userId: { $exists: false } }
-        ]
-      }).toArray();
+      const list = await this.db.collection("clients").find({ userId }).toArray();
       clients = list.map((item: any) => ({
         ...item,
         id: item._id.toString(),
       })) as Client[];
-
-      if (userId !== "user-1" && userId !== "vega") {
-        clients = clients.filter(c => c.userId === userId);
-      }
     } else {
       const data = this.readLocalJson();
-      clients = data.clients.filter(c => c.userId === userId || (!c.userId && (userId === "user-1" || userId === "vega")));
+      clients = data.clients.filter(c => c.userId === userId);
     }
     return clients;
   }
@@ -878,10 +870,8 @@ class DatabaseConnection {
 
   public async updateClient(id: string, updates: Partial<Client>, userId: string): Promise<Client | null> {
     if (this.isUsingMongo && this.db) {
-      const filterQuery: any = { _id: new ObjectId(id) };
-      if (userId !== "user-1" && userId !== "vega") {
-        filterQuery.userId = userId;
-      }
+      if (!ObjectId.isValid(id)) return null;
+      const filterQuery = { _id: new ObjectId(id), userId };
       await this.db.collection("clients").updateOne(
         filterQuery,
         { $set: updates }
@@ -893,7 +883,7 @@ class DatabaseConnection {
       if (idx === -1) return null;
 
       const item = data.clients[idx];
-      const isOwner = item.userId === userId || (!item.userId && (userId === "user-1" || userId === "vega"));
+      const isOwner = item.userId === userId;
       if (!isOwner) return null;
 
       data.clients[idx] = { ...data.clients[idx], ...updates };
@@ -904,10 +894,8 @@ class DatabaseConnection {
 
   public async deleteClient(id: string, userId: string): Promise<boolean> {
     if (this.isUsingMongo && this.db) {
-      const filterQuery: any = { _id: new ObjectId(id) };
-      if (userId !== "user-1" && userId !== "vega") {
-        filterQuery.userId = userId;
-      }
+      if (!ObjectId.isValid(id)) return false;
+      const filterQuery = { _id: new ObjectId(id), userId };
       const res = await this.db.collection("clients").deleteOne(filterQuery);
       return res.deletedCount > 0;
     } else {
@@ -916,7 +904,7 @@ class DatabaseConnection {
       if (idx === -1) return false;
 
       const item = data.clients[idx];
-      const isOwner = item.userId === userId || (!item.userId && (userId === "user-1" || userId === "vega"));
+      const isOwner = item.userId === userId;
       if (!isOwner) return false;
 
       data.clients.splice(idx, 1);
@@ -929,23 +917,14 @@ class DatabaseConnection {
   public async getTasks(userId: string): Promise<Task[]> {
     let tasks: Task[] = [];
     if (this.isUsingMongo && this.db) {
-      const list = await this.db.collection("tasks").find({
-        $or: [
-          { userId: userId },
-          { userId: { $exists: false } }
-        ]
-      }).toArray();
+      const list = await this.db.collection("tasks").find({ userId }).toArray();
       tasks = list.map((item: any) => ({
         ...item,
         id: item._id.toString(),
       })) as Task[];
-
-      if (userId !== "user-1" && userId !== "vega") {
-        tasks = tasks.filter(t => t.userId === userId);
-      }
     } else {
       const data = this.readLocalJson();
-      tasks = data.tasks.filter(t => t.userId === userId || (!t.userId && (userId === "user-1" || userId === "vega")));
+      tasks = data.tasks.filter(t => t.userId === userId);
     }
     return tasks;
   }
@@ -973,10 +952,8 @@ class DatabaseConnection {
 
   public async updateTask(id: string, updates: Partial<Task>, userId: string): Promise<Task | null> {
     if (this.isUsingMongo && this.db) {
-      const filterQuery: any = { _id: new ObjectId(id) };
-      if (userId !== "user-1" && userId !== "vega") {
-        filterQuery.userId = userId;
-      }
+      if (!ObjectId.isValid(id)) return null;
+      const filterQuery = { _id: new ObjectId(id), userId };
       await this.db.collection("tasks").updateOne(
         filterQuery,
         { $set: updates }
@@ -990,7 +967,7 @@ class DatabaseConnection {
       if (idx === -1) return null;
 
       const item = data.tasks[idx];
-      const isOwner = item.userId === userId || (!item.userId && (userId === "user-1" || userId === "vega"));
+      const isOwner = item.userId === userId;
       if (!isOwner) return null;
 
       data.tasks[idx] = { ...data.tasks[idx], ...updates };
@@ -1001,10 +978,8 @@ class DatabaseConnection {
 
   public async deleteTask(id: string, userId: string): Promise<boolean> {
     if (this.isUsingMongo && this.db) {
-      const filterQuery: any = { _id: new ObjectId(id) };
-      if (userId !== "user-1" && userId !== "vega") {
-        filterQuery.userId = userId;
-      }
+      if (!ObjectId.isValid(id)) return false;
+      const filterQuery = { _id: new ObjectId(id), userId };
       const res = await this.db.collection("tasks").deleteOne(filterQuery);
       return res.deletedCount > 0;
     } else {
@@ -1013,7 +988,7 @@ class DatabaseConnection {
       if (idx === -1) return false;
 
       const item = data.tasks[idx];
-      const isOwner = item.userId === userId || (!item.userId && (userId === "user-1" || userId === "vega"));
+      const isOwner = item.userId === userId;
       if (!isOwner) return false;
 
       data.tasks.splice(idx, 1);
@@ -1026,23 +1001,14 @@ class DatabaseConnection {
   public async getProposals(userId: string): Promise<Proposal[]> {
     let proposals: Proposal[] = [];
     if (this.isUsingMongo && this.db) {
-      const list = await this.db.collection("proposals").find({
-        $or: [
-          { userId: userId },
-          { userId: { $exists: false } }
-        ]
-      }).toArray();
+      const list = await this.db.collection("proposals").find({ userId }).toArray();
       proposals = list.map((item: any) => ({
         ...item,
         id: item._id.toString(),
       })) as Proposal[];
-
-      if (userId !== "user-1" && userId !== "vega") {
-        proposals = proposals.filter(p => p.userId === userId);
-      }
     } else {
       const data = this.readLocalJson();
-      proposals = data.proposals.filter(p => p.userId === userId || (!p.userId && (userId === "user-1" || userId === "vega")));
+      proposals = data.proposals.filter(p => p.userId === userId);
     }
     return proposals;
   }
@@ -1071,10 +1037,8 @@ class DatabaseConnection {
 
   public async updateProposal(id: string, updates: Partial<Proposal>, userId: string): Promise<Proposal | null> {
     if (this.isUsingMongo && this.db) {
-      const filterQuery: any = { _id: new ObjectId(id) };
-      if (userId !== "user-1" && userId !== "vega") {
-        filterQuery.userId = userId;
-      }
+      if (!ObjectId.isValid(id)) return null;
+      const filterQuery = { _id: new ObjectId(id), userId };
       await this.db.collection("proposals").updateOne(
         filterQuery,
         { $set: updates }
@@ -1087,7 +1051,7 @@ class DatabaseConnection {
       if (idx === -1) return null;
 
       const item = data.proposals[idx];
-      const isOwner = item.userId === userId || (!item.userId && (userId === "user-1" || userId === "vega"));
+      const isOwner = item.userId === userId;
       if (!isOwner) return null;
 
       data.proposals[idx] = { ...data.proposals[idx], ...updates };
@@ -1098,10 +1062,8 @@ class DatabaseConnection {
 
   public async deleteProposal(id: string, userId: string): Promise<boolean> {
     if (this.isUsingMongo && this.db) {
-      const filterQuery: any = { _id: new ObjectId(id) };
-      if (userId !== "user-1" && userId !== "vega") {
-        filterQuery.userId = userId;
-      }
+      if (!ObjectId.isValid(id)) return false;
+      const filterQuery = { _id: new ObjectId(id), userId };
       const res = await this.db.collection("proposals").deleteOne(filterQuery);
       return res.deletedCount > 0;
     } else {
@@ -1110,7 +1072,7 @@ class DatabaseConnection {
       if (idx === -1) return false;
 
       const item = data.proposals[idx];
-      const isOwner = item.userId === userId || (!item.userId && (userId === "user-1" || userId === "vega"));
+      const isOwner = item.userId === userId;
       if (!isOwner) return false;
 
       data.proposals.splice(idx, 1);
@@ -1123,23 +1085,14 @@ class DatabaseConnection {
   public async getVisits(userId: string): Promise<Visit[]> {
     let visits: Visit[] = [];
     if (this.isUsingMongo && this.db) {
-      const list = await this.db.collection("visits").find({
-        $or: [
-          { userId: userId },
-          { userId: { $exists: false } }
-        ]
-      }).toArray();
+      const list = await this.db.collection("visits").find({ userId }).toArray();
       visits = list.map((item: any) => ({
         ...item,
         id: item._id.toString(),
       })) as Visit[];
-
-      if (userId !== "user-1" && userId !== "vega") {
-        visits = visits.filter(v => v.userId === userId);
-      }
     } else {
       const data = this.readLocalJson();
-      visits = data.visits.filter(v => v.userId === userId || (!v.userId && (userId === "user-1" || userId === "vega")));
+      visits = data.visits.filter(v => v.userId === userId);
     }
     return visits;
   }
@@ -1168,10 +1121,8 @@ class DatabaseConnection {
 
   public async updateVisit(id: string, updates: Partial<Visit>, userId: string): Promise<Visit | null> {
     if (this.isUsingMongo && this.db) {
-      const filterQuery: any = { _id: new ObjectId(id) };
-      if (userId !== "user-1" && userId !== "vega") {
-        filterQuery.userId = userId;
-      }
+      if (!ObjectId.isValid(id)) return null;
+      const filterQuery = { _id: new ObjectId(id), userId };
       await this.db.collection("visits").updateOne(
         filterQuery,
         { $set: updates }
@@ -1184,7 +1135,7 @@ class DatabaseConnection {
       if (idx === -1) return null;
 
       const item = data.visits[idx];
-      const isOwner = item.userId === userId || (!item.userId && (userId === "user-1" || userId === "vega"));
+      const isOwner = item.userId === userId;
       if (!isOwner) return null;
 
       data.visits[idx] = { ...data.visits[idx], ...updates };
@@ -1195,10 +1146,8 @@ class DatabaseConnection {
 
   public async deleteVisit(id: string, userId: string): Promise<boolean> {
     if (this.isUsingMongo && this.db) {
-      const filterQuery: any = { _id: new ObjectId(id) };
-      if (userId !== "user-1" && userId !== "vega") {
-        filterQuery.userId = userId;
-      }
+      if (!ObjectId.isValid(id)) return false;
+      const filterQuery = { _id: new ObjectId(id), userId };
       const res = await this.db.collection("visits").deleteOne(filterQuery);
       return res.deletedCount > 0;
     } else {
@@ -1207,7 +1156,7 @@ class DatabaseConnection {
       if (idx === -1) return false;
 
       const item = data.visits[idx];
-      const isOwner = item.userId === userId || (!item.userId && (userId === "user-1" || userId === "vega"));
+      const isOwner = item.userId === userId;
       if (!isOwner) return false;
 
       data.visits.splice(idx, 1);
@@ -1252,21 +1201,25 @@ class DatabaseConnection {
           { email: identifier.toLowerCase() }
         ]
       });
-      if (!user && identifier.toLowerCase() === "vega") {
-        const demoUser = defaultUsers.find(u => u.username === "vega") || {
-          username: "vega",
-          password: "123",
-          name: "Carlos Eduardo",
-          email: "carlos@metriacrm.com",
-          avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80",
-          role: "Corretor Sênior",
-          phone: "(11) 98765-4321"
-        };
-        await this.db.collection("users").insertOne(demoUser);
-        user = await this.db.collection("users").findOne({ username: "vega" });
-      }
       if (!user) return null;
-      const isValid = verifyPassword(password, user.password || "");
+
+      const storedPassword = user.password || "";
+      let isValid = false;
+
+      if (isPlaintextPassword(storedPassword)) {
+        // Secure upgrade for legacy plaintext password
+        isValid = password === storedPassword;
+        if (isValid) {
+          const newHashed = hashPassword(password);
+          await this.db.collection("users").updateOne(
+            { _id: user._id },
+            { $set: { password: newHashed } }
+          );
+        }
+      } else {
+        isValid = verifyPassword(password, storedPassword);
+      }
+
       if (!isValid) return null;
 
       const { password: _, ...clean } = user;
@@ -1278,25 +1231,27 @@ class DatabaseConnection {
           (u.username && u.username.toLowerCase() === identifier.toLowerCase()) ||
           (u.email && u.email.toLowerCase() === identifier.toLowerCase())
       );
-      if (!user && identifier.toLowerCase() === "vega") {
-        const demoUser = defaultUsers.find(u => u.username === "vega") || {
-          username: "vega",
-          password: "123",
-          name: "Carlos Eduardo",
-          email: "carlos@metriacrm.com",
-          avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80",
-          role: "Corretor Sênior",
-          phone: "(11) 98765-4321"
-        };
-        const generatedId = "user-1";
-        const insertedUser = { ...demoUser, id: generatedId };
-        const data = this.readLocalJson();
-        data.users.push(insertedUser);
-        this.writeLocalJson(data);
-        user = insertedUser;
-      }
       if (!user) return null;
-      const isValid = verifyPassword(password, user.password || "");
+
+      const storedPassword = user.password || "";
+      let isValid = false;
+
+      if (isPlaintextPassword(storedPassword)) {
+        // Secure upgrade for legacy plaintext password
+        isValid = password === storedPassword;
+        if (isValid) {
+          const newHashed = hashPassword(password);
+          const data = this.readLocalJson();
+          const uIdx = data.users.findIndex((u: any) => u.id === user.id);
+          if (uIdx !== -1) {
+            data.users[uIdx].password = newHashed;
+            this.writeLocalJson(data);
+          }
+        }
+      } else {
+        isValid = verifyPassword(password, storedPassword);
+      }
+
       if (!isValid) return null;
 
       const { password: _, ...clean } = user;

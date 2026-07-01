@@ -1,26 +1,45 @@
 import crypto from "crypto";
 
+const ITERATIONS = 100000;
+const KEY_LEN = 64;
+const DIGEST = "sha512";
+
 /**
  * Secures a password using Node's native PBKDF2.
- * Output format: "salt:hash"
+ * Output format: "salt:hash:iterations"
  */
 export function hashPassword(password: string): string {
   const salt = crypto.randomBytes(16).toString("hex");
-  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, "sha512").toString("hex");
-  return `${salt}:${hash}`;
+  const hash = crypto.pbkdf2Sync(password, salt, ITERATIONS, KEY_LEN, DIGEST).toString("hex");
+  return `${salt}:${hash}:${ITERATIONS}`;
 }
 
 /**
  * Verifies a password against a stored PBKDF2 hash.
- * Fallbacks to plain text check if the stored value is not a PBKDF2 format.
+ * Requires a proper PBKDF2 format. No plain text fallbacks.
  */
 export function verifyPassword(password: string, storedHash: string): boolean {
   if (!storedHash) return false;
-  if (!storedHash.includes(":")) {
-    // Fallback for plain-text legacy passwords like "123"
-    return password === storedHash;
+  
+  const parts = storedHash.split(":");
+  if (parts.length < 2) {
+    // Strictly block plain-text/legacy raw passwords here
+    return false;
   }
-  const [salt, hash] = storedHash.split(":");
-  const testHash = crypto.pbkdf2Sync(password, salt, 1000, 64, "sha512").toString("hex");
+  
+  const salt = parts[0];
+  const hash = parts[1];
+  const iterations = parts[2] ? parseInt(parts[2], 10) : 1000;
+  
+  const testHash = crypto.pbkdf2Sync(password, salt, iterations, KEY_LEN, DIGEST).toString("hex");
   return hash === testHash;
 }
+
+/**
+ * Helper to check if a password stored in DB is plaintext.
+ */
+export function isPlaintextPassword(stored: string): boolean {
+  if (!stored) return false;
+  return !stored.includes(":");
+}
+
