@@ -434,8 +434,8 @@ export default function PropertiesView({ properties, clients, onAddProperty, onS
                 <h3 className="font-display text-xl font-bold text-on-surface tracking-tight">
                   Sua carteira de imóveis ainda está vazia.
                 </h3>
-                <p className="text-sm opacity-90 mt-2 max-w-md leading-relaxed">
-                  Adicione seus imóveis disponíveis para cruzar oportunidades com seus clientes.
+                <p className="text-sm opacity-90 mt-2.5 max-w-md leading-relaxed">
+                  Cadastre suas propriedades para cruzá-las inteligentemente com o perfil de interesse dos seus leads e transformar follow-ups diários em negociações e fechamentos de sucesso.
                 </p>
                 <button
                   onClick={() => setShowAddForm(true)}

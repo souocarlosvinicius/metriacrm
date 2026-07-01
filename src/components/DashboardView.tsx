@@ -428,19 +428,22 @@ export default function DashboardView({
 
       {/* Welcome Message */}
       <section className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-gradient-to-br from-primary/10 via-transparent to-transparent p-6 rounded-2xl border border-primary/10">
-        <div className="space-y-1.5">
+        <div className="space-y-1.5 flex-1">
           <p className="font-label-caps text-label-caps text-secondary uppercase tracking-widest text-xs font-bold">
             {getGreeting()}
           </p>
           <h2 className="font-display text-2xl font-black text-primary tracking-tight leading-tight md:max-w-xl">
             {currentUser?.onboardingCompleted 
-              ? `Pronto para fechar novos negócios em ${currentUser.primaryCity} hoje?`
-              : "Nenhum lead, visita, proposta ou follow-up perdido hoje."}
+              ? `Pronto para organizar sua rotina comercial em ${currentUser.primaryCity}?`
+              : "Acompanhe cada oportunidade e saiba exatamente quem atender hoje."}
           </h2>
+          <p className="text-xs text-on-surface-variant font-medium mt-1 leading-relaxed md:max-w-xl">
+            O Metria CRM garante que você não perca mais leads, visitas, propostas e follow-ups, transformando o seu acompanhamento comercial em resultados concretos.
+          </p>
           {currentUser?.onboardingCompleted && (
-            <p className="text-xs text-on-surface-variant font-medium mt-1">
-              Atuando no segmento de <span className="font-bold text-primary">{currentUser.actingType}</span> • {currentUser.commercialName || "Corretor Autônomo"}
-            </p>
+            <div className="text-[11px] text-on-surface-variant font-semibold mt-2.5 bg-primary/5 px-2.5 py-1 rounded-md inline-block">
+              Segmento principal: <span className="font-bold text-primary">{currentUser.actingType}</span> • {currentUser.commercialName || "Corretor Autônomo"}
+            </div>
           )}
         </div>
         
@@ -1094,10 +1097,10 @@ export default function DashboardView({
 
             <div className="space-y-2 relative z-10 max-w-md">
               <h4 className="font-display text-lg sm:text-xl font-bold text-on-surface tracking-tight">
-                Os relatórios aparecerão quando você começar a cadastrar leads, visitas e propostas.
+                Acompanhe seu desempenho comercial e nunca mais perca um fechamento.
               </h4>
               <p className="text-xs sm:text-sm text-on-surface-variant/80 leading-relaxed">
-                Com o Metria, você acompanha o funil de conversão, metas mensais e previsão de comissão. Cadastre dados reais ou ative o Modo Demonstração para ver este painel preenchido.
+                Com o Metria CRM, você monitora o funil de conversão, metas mensais e previsão de comissões em tempo real. Cadastre dados reais ou ative o Modo Demonstração para ver cada detalhe deste painel.
               </p>
             </div>
 

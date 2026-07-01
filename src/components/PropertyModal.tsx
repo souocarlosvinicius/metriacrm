@@ -1343,6 +1343,31 @@ Acredito que seja a oportunidade ideal para o que você procura. Gostaria de age
                     )}
                   </div>
 
+                  {/* Geração de Fotos com IA (Recurso Premium Bloqueado) */}
+                  <div className="pt-3 border-t border-secondary/10 flex flex-col gap-1.5">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[11px] font-bold text-on-surface-variant flex items-center gap-1">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+                        Gerador de Fotos de Alta Resolução com IA
+                      </span>
+                      <span className="text-[8px] bg-amber-500/10 text-amber-800 dark:text-amber-300 border border-amber-500/20 px-1.5 py-0.2 rounded font-bold uppercase tracking-wider">
+                        Premium
+                      </span>
+                    </div>
+                    <div className="p-3.5 bg-amber-500/5 rounded-xl border border-dashed border-amber-500/20 flex flex-col items-center justify-center text-center gap-2">
+                      <p className="text-[11px] text-amber-900 dark:text-amber-300 font-medium leading-relaxed max-w-sm">
+                        A geração de fotos hiper-realistas por Inteligência Artificial é exclusiva para assinantes do plano <strong>Metria Corretor</strong>. Com o Metria CRM, você não perde mais leads ou visitas por falta de uma excelente apresentação visual. Faça o upgrade agora!
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => alert("Geração de fotos com IA é um recurso do plano Metria Corretor. Para ativá-lo imediatamente, acesse a aba de Planos no menu de Ajustes!")}
+                        className="px-3 py-1 bg-amber-500 hover:bg-amber-600 active:scale-[0.97] text-white font-bold text-[10px] rounded-lg transition-all shadow-sm cursor-pointer"
+                      >
+                        Quero o Plano Corretor
+                      </button>
+                    </div>
+                  </div>
+
                   {/* Video and Social Links */}
                   <div className="flex flex-col gap-1 pt-1 border-t border-secondary/10">
                     <label className="text-xs font-bold text-on-surface-variant flex items-center gap-1.5">

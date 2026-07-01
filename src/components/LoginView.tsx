@@ -6,10 +6,12 @@ import { apiFetch } from "../api";
 
 interface LoginViewProps {
   onLoginSuccess: (user: User) => void;
+  initialRegister?: boolean;
+  onBackToLanding?: () => void;
 }
 
-export default function LoginView({ onLoginSuccess }: LoginViewProps) {
-  const [isRegistering, setIsRegistering] = useState(false);
+export default function LoginView({ onLoginSuccess, initialRegister = false, onBackToLanding }: LoginViewProps) {
+  const [isRegistering, setIsRegistering] = useState(initialRegister);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -137,8 +139,11 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
             <Home className="w-6 h-6 text-secondary-fixed animate-pulse" />
           </div>
           <h1 className="font-display text-3xl font-black text-primary tracking-tight">Metria CRM</h1>
-          <p className="text-xs text-on-surface-variant font-medium text-center mt-2.5 px-3 leading-relaxed">
-            O CRM imobiliário feito para o corretor não perder leads, visitas, propostas e follow-ups.
+          <h2 className="text-xs font-bold text-on-surface mt-2.5 text-center px-4 leading-tight uppercase tracking-wider">
+            Organize sua rotina comercial e não perca nenhum negócio
+          </h2>
+          <p className="text-[11px] text-on-surface-variant font-medium text-center mt-1.5 px-3 leading-relaxed">
+            O CRM imobiliário feito para que você acompanhe cada oportunidade de perto, do primeiro contato ao fechamento, sem perder leads, visitas ou follow-ups.
           </p>
         </div>
 
@@ -393,6 +398,18 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
           )}
         </AnimatePresence>
       </motion.div>
+
+      {onBackToLanding && (
+        <motion.button
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.3 }}
+          onClick={onBackToLanding}
+          className="mt-6 text-xs font-bold text-on-surface-variant/70 hover:text-primary transition-all flex items-center gap-1.5 cursor-pointer bg-surface/50 border border-outline-variant/10 px-4 py-2 rounded-xl backdrop-blur-sm"
+        >
+          ← Voltar para a Página Inicial
+        </motion.button>
+      )}
     </div>
   );
 }

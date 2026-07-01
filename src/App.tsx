@@ -15,12 +15,15 @@ import ClientModal from "./components/ClientModal";
 import LoginView from "./components/LoginView";
 import UserProfileModal from "./components/UserProfileModal";
 import OnboardingModal from "./components/OnboardingModal";
+import LandingPage from "./components/LandingPage";
 import { apiFetch } from "./api";
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showAuth, setShowAuth] = useState(false);
+  const [authDefaultToRegister, setAuthDefaultToRegister] = useState(false);
 
   // Check session on mount
   useEffect(() => {
@@ -401,6 +404,26 @@ export default function App() {
     }
   };
 
+  const handleStartDemo = () => {
+    const demoUser: User = {
+      id: "demo-user-1",
+      username: "carlos_demo",
+      name: "Carlos Brito (Demonstração)",
+      email: "carlos.brito@metriacrm.com.br",
+      avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80",
+      actingType: "Alto padrão",
+      commercialName: "Brito Negócios Imobiliários",
+      primaryCity: "São Paulo - SP",
+      phone: "5511999999999",
+      isDemo: true,
+      onboardingCompleted: true,
+      sessionToken: "demo_token_123"
+    };
+    
+    localStorage.setItem("vega_crm_user", JSON.stringify(demoUser));
+    setCurrentUser(demoUser);
+  };
+
   if (checkingAuth) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -415,8 +438,24 @@ export default function App() {
   }
 
   if (!currentUser) {
+    if (!showAuth) {
+      return (
+        <LandingPage
+          onGetStarted={(register) => {
+            setAuthDefaultToRegister(register);
+            setShowAuth(true);
+          }}
+          onStartDemo={handleStartDemo}
+        />
+      );
+    }
+
     return (
       <LoginView
+        initialRegister={authDefaultToRegister}
+        onBackToLanding={() => {
+          setShowAuth(false);
+        }}
         onLoginSuccess={(user) => {
           localStorage.setItem("vega_crm_user", JSON.stringify(user));
           setCurrentUser(user);
@@ -437,7 +476,7 @@ export default function App() {
           <div className="flex items-center gap-2">
             <span className="flex h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
             <span>
-              <strong>Você está no modo demonstração profissional.</strong> Alterações feitas aqui são armazenadas localmente no seu navegador e não afetam dados reais de produção.
+              <strong>Modo Demonstração Ativo.</strong> Experimente a segurança de uma rotina onde o corretor não perde mais leads, visitas, propostas e follow-ups. Sinta o poder de ter suas oportunidades de vendas sob controle absoluto.
             </span>
           </div>
           <button
@@ -807,6 +846,7 @@ export default function App() {
                   }
                   localStorage.removeItem("vega_crm_user");
                   setCurrentUser(null);
+                  setShowAuth(false);
                 }}
               />
             </motion.div>

@@ -176,11 +176,10 @@ export default function OnboardingModal({ user, onComplete }: OnboardingModalPro
                 </div>
                 <div className="space-y-2">
                   <h2 className="font-display text-2xl font-black text-primary tracking-tight leading-tight">
-                    Seja muito bem-vindo, Corretor!
+                    Seja muito bem-vindo ao Metria CRM!
                   </h2>
                   <p className="text-on-surface-variant text-sm max-w-md mx-auto leading-relaxed">
-                    O Metria CRM foi desenhado para colocar sua carteira de clientes, imóveis e tarefas em outro nível de organização. 
-                    Vamos configurar sua conta rapidamente em 2 minutos.
+                    A plataforma inteligente desenhada para que você nunca mais perca um lead, uma visita ou um follow-up. Organize sua rotina comercial, acompanhe cada oportunidade de negócio e saiba exatamente quem atender hoje.
                   </p>
                 </div>
 
@@ -378,8 +377,10 @@ export default function OnboardingModal({ user, onComplete }: OnboardingModalPro
                   <div className="mx-auto w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-800 shadow-sm mb-2">
                     <Check className="w-6 h-6 stroke-[3]" />
                   </div>
-                  <h2 className="font-display text-lg font-bold text-primary">Tudo Pronto para Começar!</h2>
-                  <p className="text-xs text-on-surface-variant">Confira o resumo das suas configurações personalizadas.</p>
+                  <h2 className="font-display text-lg font-bold text-primary">Sua nova rotina comercial começa agora!</h2>
+                  <p className="text-xs text-on-surface-variant mt-1 leading-relaxed">
+                    Configurações personalizadas salvas com sucesso. Agora, você tem o poder de garantir que nenhum lead, visita, proposta ou follow-up seja esquecido. Prepare-se para decolar suas negociações!
+                  </p>
                 </div>
 
                 <div className="bg-surface-container-low rounded-2xl border border-outline-variant/30 p-4 space-y-3 text-xs">

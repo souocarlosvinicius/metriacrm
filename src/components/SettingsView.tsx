@@ -866,7 +866,7 @@ export default function SettingsView({ currentUser, onUpdateSuccess, onLogout }:
                   <CreditCard className="w-5 h-5 text-primary" />
                   <div className="flex-1">
                     <h3 className="font-display font-bold text-on-surface text-lg">Planos e Assinatura</h3>
-                    <p className="text-xs text-on-surface-variant font-medium mt-0.5">Assine o Metria CRM e impulsione suas vendas imobiliárias.</p>
+                    <p className="text-xs text-on-surface-variant font-medium mt-0.5">Garanta que você nunca mais perderá um lead, visita ou proposta. Desbloqueie recursos avançados de IA e impulsione seus resultados comerciais de perto.</p>
                   </div>
                   <span className="text-[10px] bg-primary/10 text-primary px-2.5 py-1 rounded-full font-bold uppercase tracking-wider animate-pulse">
                     Fase Beta Ativa
@@ -876,8 +876,8 @@ export default function SettingsView({ currentUser, onUpdateSuccess, onLogout }:
                 <div className="p-4 bg-primary/5 rounded-2xl border border-primary/20 flex gap-3 text-xs leading-relaxed text-on-surface-variant">
                   <Sparkles className="w-5 h-5 text-primary shrink-0 mt-0.5" />
                   <div>
-                    <strong className="text-primary block mb-0.5">Oportunidade Comercial Limitada!</strong>
-                    Como usuário parceiro da nossa fase de testes fechada, você tem direito a assinar o plano <span className="font-bold text-primary">Beta Corretor</span> por valores promocionais vitalícios (de <strong>R$ 39,90/mês</strong> a <strong>R$ 49,90/mês</strong>). Após a validação pública, o plano padrão custará <strong>R$ 89,90/mês</strong>. Aproveite para travar seu preço promocional!
+                    <strong className="text-primary block mb-0.5">Diga adeus à perda de oportunidades comerciais!</strong>
+                    Como corretor parceiro do Metria CRM Beta, faça o upgrade promocional hoje e tenha leads, imóveis e acompanhamentos ilimitados por um valor exclusivo vitalício. Garanta o controle completo do seu funil, cruze dados de imóveis com leads de forma inteligente e saiba exatamente quem atender hoje para fechar mais negócios.
                   </div>
                 </div>
 

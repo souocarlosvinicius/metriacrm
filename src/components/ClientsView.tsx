@@ -281,10 +281,10 @@ export default function ClientsView({
                   <UserPlus className="w-8 h-8 stroke-[1.5]" />
                 </div>
                 <h3 className="font-display text-xl font-bold text-on-surface tracking-tight">
-                  Você ainda não cadastrou nenhum lead.
+                  Não perca mais nenhuma oportunidade de venda!
                 </h3>
-                <p className="text-sm opacity-90 mt-2 max-w-md leading-relaxed">
-                  Cadastre seu primeiro lead e defina um follow-up para não perder a oportunidade.
+                <p className="text-sm opacity-90 mt-2.5 max-w-md leading-relaxed">
+                  O Metria CRM garante que você não perca mais leads, visitas, propostas e follow-ups. Cadastre sua primeira oportunidade agora e mantenha todo o seu funil de negócios sob controle absoluto.
                 </p>
                 <button
                   onClick={() => setShowAddForm(true)}
