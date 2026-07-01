@@ -32,6 +32,9 @@ export default function App() {
         const res = await apiFetch("/api/auth/me");
         if (res.ok) {
           const user = await res.json();
+          if (user) {
+            delete user.sessionToken;
+          }
           setCurrentUser(user);
           localStorage.setItem("vega_crm_user", JSON.stringify(user));
         } else {
@@ -40,15 +43,24 @@ export default function App() {
         }
       } catch (err) {
         console.error("Erro ao verificar sessão:", err);
-        // Fallback to local storage if offline/error to prevent disruption, but only as safeguard
+        // Only fallback to localStorage if they are in offline Demo Mode.
+        // Otherwise, never trust local storage, force logout to keep it secure.
         const saved = localStorage.getItem("vega_crm_user");
         if (saved) {
           try {
-            setCurrentUser(JSON.parse(saved));
+            const parsed = JSON.parse(saved);
+            if (parsed && parsed.isDemo) {
+              setCurrentUser(parsed);
+            } else {
+              setCurrentUser(null);
+              localStorage.removeItem("vega_crm_user");
+            }
           } catch (e) {
-            console.error("Erro ao analisar vega_crm_user no localStorage:", e);
+            setCurrentUser(null);
             localStorage.removeItem("vega_crm_user");
           }
+        } else {
+          setCurrentUser(null);
         }
       } finally {
         setCheckingAuth(false);

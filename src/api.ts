@@ -46,12 +46,13 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
   // If NOT demo session, proceed with real API call
   if (!isDemoSession() && !url.includes("/api/demo/reset") && !url.includes("isDemo=true")) {
     if (url.startsWith("/api/")) {
+      init = init || {};
+      init.credentials = init.credentials || "same-origin";
       const saved = localStorage.getItem("vega_crm_user");
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
           if (parsed && parsed.sessionToken) {
-            init = init || {};
             const headers = new Headers(init.headers || {});
             if (!headers.has("Authorization")) {
               headers.set("Authorization", `Bearer ${parsed.sessionToken}`);
